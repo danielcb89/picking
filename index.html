@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Gestor Picking IKEA — SARTON GROUP</title>
+  <!-- Librería Excel en local -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <!-- Estilos -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     PANTALLA DE CARGA DE FICHEROS
+     ══════════════════════════════════════════ -->
+<div id="uploadScreen">
+  <div class="up-logo">
+    <div class="up-icon">📦</div>
+    <div>
+      <div class="up-title">Gestor Picking IKEA</div>
+      <div class="up-sub">SARTON GROUP</div>
+    </div>
+  </div>
+
+  <div class="up-grid">
+
+    <!-- Tarjeta 1: artículos — carga manual, sin cambios -->
+    <div class="up-card" id="card1">
+      <input type="file" id="file1" accept=".xls,.xlsx,.csv" onchange="onFile(1,this)">
+      <div class="up-card-icon">📊</div>
+      <div class="up-card-title">Informe de artículos</div>
+      <div class="up-card-sub">
+        Excel exportado del sistema<br>(.xls / .xlsx / .csv)<br><br>
+        Columnas: artcod, descr, semuds, pall, peso, mdq,<br>
+        loc, maxpick, minpick, locaux, maxpickaux, minpickaux, entrega...
+      </div>
+      <div class="up-card-status" id="st1"></div>
+    </div>
+
+    <!-- Tarjeta 2: ubicaciones — selector de tienda -->
+    <div class="up-card up-card--store" id="card2">
+      <div class="up-card-icon">📍</div>
+      <div class="up-card-title">Maestro de ubicaciones</div>
+      <div class="up-card-sub">
+        Selecciona la tienda para cargar<br>su fichero de ubicaciones
+      </div>
+      <div class="store-select-wrap">
+        <label class="store-select-label" for="storeSelect">Elige tienda</label>
+        <select id="storeSelect" class="store-select" onchange="onStoreSelect(this)">
+          <option value="">— Seleccionar —</option>
+          <option value="PMI">PMI — Palma de Mallorca</option>
+          <option value="TFE">TFE — Tenerife</option>
+          <option value="GCA">GCA — Gran Canaria</option>
+          <option value="LZA">LZA — Lanzarote</option>
+        </select>
+      </div>
+      <div class="up-card-status" id="st2"></div>
+    </div>
+
+  </div><!-- /up-grid -->
+
+  <button class="up-btn" id="startBtn" disabled onclick="startProcessing()">
+    <span>⚡</span> Analizar almacén
+  </button>
+  <div class="up-hint">El fichero de artículos se procesa localmente. Las ubicaciones se cargan desde el servidor.</div>
+
+  <div class="up-prog" id="upProg">
+    <div class="prog-msg" id="progMsg">Procesando...</div>
+    <div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     APLICACIÓN PRINCIPAL
+     ══════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Tooltip flotante del mapa -->
+  <div class="tt" id="tt"></div>
+
+  <!-- Tooltip flotante del panel de detalle de estantería -->
+  <div class="shelf-tt" id="shelfTt"></div>
+
+  <!-- CABECERA -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">📦</div>
+      <div>
+        <div class="logo-tx">Gestor Picking IKEA</div>
+        <div class="logo-sub" id="headerStoreName">—</div>
+      </div>
+    </div>
+
+    <div class="hpills">
+      <div class="pill"><span class="lbl">Locs Central</span><span id="hLocsC">—</span></div>
+      <div class="pill"><span class="lbl">Locs Aux1</span>   <span id="hLocsA">—</span></div>
+      <div class="pill"><span class="lbl">Artículos</span>   <span id="hArts">—</span></div>
+      <div class="pill"><span class="lbl">Con loc</span>     <span id="hConLoc">—</span></div>
+      <div class="pill"><span class="lbl">Revisar</span>     <span id="hBad">—</span></div>
+      <div class="pill"><span class="lbl">Sin loc ≥5/sem</span><span id="hNoLoc">—</span></div>
+    </div>
+
+    <button class="hbtnr" onclick="location.reload()">↺ Cambiar tienda</button>
+  </header>
+
+  <!-- LAYOUT PRINCIPAL -->
+  <div class="layout">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- Navegación -->
+      <div>
+        <div class="slbl">Secciones</div>
+        <div class="nav act" onclick="gotoView('mapa')" id="n-mapa">🗺️ Mapa del almacén</div>
+        <div class="nav"     onclick="gotoView('arts')" id="n-arts">📋 Artículos</div>
+        <div class="nav"     onclick="gotoView('peso')" id="n-peso">🟠 Revisar localización</div>
+        <div class="nav"     onclick="gotoView('libre')" id="n-libre">🟢 Picking libre</div>
+      </div>
+
+      <div class="divr"></div>
+
+      <!-- Filtros artículos (visible solo en vista Artículos) -->
+      <div id="sb-arts" style="display:none">
+        <div class="slbl">Filtros artículos</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+
+          <div class="frow">
+            <label>Venta mín (uds/sem)</label>
+            <input type="number" id="fVmin" value="0" min="0" oninput="filterArts()">
+          </div>
+
+          <div class="frow">
+            <label>Tipo peso</label>
+            <select id="fPeso" onchange="filterArts()">
+              <option value="">Todos</option>
+              <option value="Voluminoso">🔴 Voluminoso</option>
+              <option value="Mediano">🟡 Mediano</option>
+              <option value="Pequeño">🟢 Pequeño</option>
+            </select>
+          </div>
+
+          <div class="frow">
+            <label>Localización</label>
+            <select id="fLoc2" onchange="filterArts()">
+              <option value="">Todos</option>
+              <option value="con">Con loc (alguna)</option>
+              <option value="sin">Sin loc (ninguna)</option>
+              <option value="central">Solo en Central</option>
+              <option value="aux">Solo en Auxiliar1</option>
+              <option value="ambos">En ambos</option>
+            </select>
+          </div>
+
+          <div class="frow">
+            <label>Surtido</label>
+            <select id="fSurt" onchange="filterArts()">
+              <option value="">Todos</option>
+              <option value="S">En surtido</option>
+              <option value="NS">Fuera surtido</option>
+            </select>
+          </div>
+
+          <div class="frow">
+            <label>Vista rápida</label>
+            <select id="fVista" onchange="filterArts()">
+              <option value="">Normal</option>
+              <option value="prio">🔴 Prioritarios sin loc</option>
+              <option value="mm0">⚠️ Max/Min = 0</option>
+              <option value="sinmdq">⚠️ Sin MDQ</option>
+            </select>
+          </div>
+
+          <button class="btn-gh" onclick="resetFilters()">↺ Resetear</button>
+        </div>
+      </div>
+
+      <div class="divr"></div>
+
+      <!-- Filtros picking libre (visible solo en vista Libre) -->
+      <div id="sb-libre" style="display:none">
+        <div class="slbl">Filtros picking libre</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div class="frow">
+            <label>Umbral mínimo libre</label>
+            <select id="freeThresholdSel" onchange="setFreeThreshold(this.value)">
+              <option value="25">+25% libre</option>
+              <option value="50" selected>+50% libre</option>
+              <option value="75">+75% libre</option>
+              <option value="100">+100% libre (vacío total)</option>
+            </select>
+          </div>
+          <div class="frow">
+            <label>Almacén</label>
+            <select id="freeAlmacenSel" onchange="setFreeAlmacen(this.value)">
+              <option value="">Ambos</option>
+              <option value="CENTRAL">Central</option>
+              <option value="AUXILIAR1">Auxiliar1</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /sidebar -->
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <div class="content">
+
+      <!-- PANEL: Mapa del almacén -->
+      <div class="panel act" id="p-mapa">
+        <div class="map-hdr">
+          <div>
+            <div class="map-title">Mapa del almacén — Planta</div>
+            <div class="map-sub">
+              Vista de planta · Hover para detalles · Click para ver estantería
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+            <input class="sbox" type="text" id="mapSearch"
+              placeholder="Buscar artículo en mapa..."
+              style="width:220px;padding:6px 11px"
+              oninput="highlightArtOnMap(this.value)">
+            <button class="btn-exp" onclick="clearMapHighlight()">✕</button>
+          </div>
+        </div>
+
+        <!-- Tabs de layout (se generan dinámicamente en app.js si hay >1 layout) -->
+        <div id="layoutTabs"></div>
+
+        <div id="mapSearchInfo" style="font-size:11px;color:var(--mu);margin-bottom:8px;min-height:16px"></div>
+        <div id="mapCont"></div>
+      </div>
+
+      <!-- PANEL: Artículos -->
+      <div class="panel" id="p-arts">
+        <div class="toolbar">
+          <input class="sbox" type="text" placeholder="Buscar código, descripción, localización..." id="sbox" oninput="filterArts()">
+          <span class="rowcnt-lbl" id="rowcnt"></span>
+          <button class="btn-exp" onclick="exportArts()">↓ CSV</button>
+        </div>
+        <div class="tw sc" id="artsTbl"></div>
+        <div class="pag">
+          <span id="pagInfo">—</span>
+          <div class="pbtns" id="pagBtns"></div>
+        </div>
+      </div>
+
+      <!-- PANEL: Revisar localización -->
+      <div class="panel" id="p-peso">
+        <div class="cards" id="pesoCards"></div>
+        <div class="toolbar" id="pesoToolbar"></div>
+        <div class="tw sc"  id="pesoTbl"></div>
+      </div>
+
+      <!-- PANEL: Picking libre -->
+      <div class="panel" id="p-libre">
+        <div class="cards" id="libreCards"></div>
+        <div class="toolbar" id="libreToolbar"></div>
+        <div class="tw sc"  id="libreTbl"></div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /layout -->
+
+  <!-- Leyenda flotante — esquina inferior izquierda -->
+  <div class="map-legend-float" id="mapLegendFloat">
+    <div class="map-legend-title">Leyenda</div>
+    <div class="leg"><div class="ldot cs-o"></div>Ocupado</div>
+    <div class="leg"><div class="ldot cs-f"></div>Libre</div>
+    <div class="leg"><div class="ldot cs-u"></div>Subutilizado</div>
+    <div class="leg"><div class="ldot cp-rev"></div>🟠 Revisar</div>
+    <div class="leg"><div class="ldot x-low"></div>🟣 Top 5 rotación</div>
+    <div class="leg"><div class="ldot layout-special-dot"></div>Zona especial</div>
+  </div>
+
+  <!-- Crédito de autor — esquina inferior derecha -->
+  <div class="app-credit">
+    Gestor Picking IKEA <span class="app-version">v0.21</span>
+    <span class="app-by">by Daniel Coso</span>
+  </div>
+
+</div><!-- /app -->
+
+
+<!-- ══════════════════════════════════════════
+     PANEL DETALLE DE ESTANTERÍA (clic en .0.X / .0.0)
+     ══════════════════════════════════════════ -->
+<div id="shelfOverlay" onclick="if(event.target===this) closeShelfDetail()">
+  <div id="shelfPanel">
+    <div class="shelf-hdr">
+      <div>
+        <div class="shelf-title" id="shelfTitle">—</div>
+        <div class="shelf-sub" id="shelfSub">—</div>
+      </div>
+      <button class="shelf-close" onclick="closeShelfDetail()">✕</button>
+    </div>
+    <div class="shelf-body" id="shelfBody"></div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     SCRIPTS (orden importante)
+     ══════════════════════════════════════════ -->
+<script src="js/state.js"></script>
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/shelf.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
