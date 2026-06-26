@@ -239,8 +239,7 @@ function svgBox(a, x, y, w, h, isFloor) {
 
   // Cara frontal
   out += `<rect x="${x}" y="${y}" width="${w}" height="${h}"
-    fill="${bodyCol}" stroke="${sideCol}" stroke-width="1.5"
-    rx="${r}" class="shelf-svg-box" data-art="${artData}" style="cursor:pointer"/>`;
+    fill="${bodyCol}" stroke="${sideCol}" stroke-width="1.5" rx="${r}"/>`;
 
   // Franja amarilla inferior (solo picking)
   if (!isFloor) {
@@ -255,77 +254,57 @@ function svgBox(a, x, y, w, h, isFloor) {
   out += `<polygon points="${x},${y} ${x+pw},${y-ph} ${x+w+pw},${y-ph} ${x+w},${y}"
     fill="${topCol}" opacity="0.9"/>`;
 
-  // ── Etiqueta ─────────────────────────────────────────────────
-  if (w >= 40 && h >= 20) {
-    const pad  = 4;
-    const lx   = x + pad;
-    const ly   = y + pad;
-    const lw   = w - pad * 2;
+  // ── Etiqueta (igual para suelo y picking) ────────────────────
+  if (w >= 40 && h >= 30) {
+    const pad = 4;
+    const lx  = x + pad;
+    const ly  = y + pad;
+    const lw  = w - pad * 2;
 
-    // Altura FIJA y compacta: barcode + código negro
-    const bcH  = 14;   // barcode
-    const cdH  = 16;   // rectángulo negro con código
-    const gap  = 2;    // espacio entre barcode y código
-    const padV = 4;    // padding vertical interno
-    const lh   = h < 35
-      ? Math.round(h * 0.80)                  // caja muy pequeña → 80%
-      : bcH + cdH + gap + padV * 2;           // compacto: ~40px máximo
+    // Alturas de zonas
+    const nameH = Math.max(14, Math.round(h * 0.28));
+    const cdH   = Math.max(14, Math.round(h * 0.22));
+    const lh    = nameH + cdH + 2;
 
-    // Etiqueta blanca — solo parte superior de la caja
+    // Fondo blanco etiqueta
     out += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}"
       fill="white" stroke="#bbb" stroke-width="0.5" rx="2"/>`;
 
-    // Zona izquierda: nombre centrado verticalmente en la etiqueta
-    const nameW  = Math.round(lw * 0.36);
-    const rightX = lx + nameW + 3;
-    const rightW = lw - nameW - 5;
-    const fs     = Math.min(11, Math.max(5, Math.round(nameW / Math.max(desc1.length, 3) * 1.3)));
-    const maxC   = Math.floor(nameW / (fs * 0.60));
-    const nameS  = desc1.length > maxC ? desc1.slice(0, maxC-1)+'…' : desc1;
-
-    out += `<text x="${lx + nameW/2}" y="${ly + lh/2}"
+    // Zona superior: nombre del artículo en negro
+    const fs      = Math.min(11, Math.max(5, Math.round(lw / Math.max(desc1.length, 3) * 0.85)));
+    const maxC    = Math.floor(lw / (fs * 0.62));
+    const nameStr = desc1.length > maxC ? desc1.slice(0, maxC-1)+'…' : desc1;
+    out += `<text x="${lx + lw/2}" y="${ly + nameH/2}"
       text-anchor="middle" dominant-baseline="middle"
       font-size="${fs}" font-weight="700" fill="#111"
-      font-family="Arial,sans-serif">${nameS}</text>`;
+      font-family="Arial,sans-serif">${nameStr}</text>`;
 
-    // Línea divisoria vertical
-    out += `<line x1="${lx+nameW+1}" y1="${ly+3}" x2="${lx+nameW+1}" y2="${ly+lh-3}"
+    // Línea divisoria horizontal
+    out += `<line x1="${lx+2}" y1="${ly+nameH}" x2="${lx+lw-2}" y2="${ly+nameH}"
       stroke="#ddd" stroke-width="0.8"/>`;
 
-// Barcode arriba derecha
-const bcY = ly + padV;
-
-// Calculamos el ancho exacto de cada una de las 24 columnas
-const colW = rightW / 24; 
-
-// El ancho de la barra negra (85% de la columna para dejar separación)
-const bw = colW * 0.85; 
-
-// Array original restaurado correctamente
-[1,0,1,1,0,1,0,1,1,0,1,0,1,0,0,1,1,0,1,0,1,1,0,1].forEach((f, index) => {
-  // Posición X exacta para cada elemento
-  const currentX = rightX + (index * colW);
-  
-  if (f) {
-    out += `<rect x="${currentX}" y="${bcY}" width="${bw}" height="${bcH}" fill="#111"/>`;
-  }
-});
-
-    // Rectángulo negro + código debajo del barcode
-    const cdY = bcY + bcH + gap;
-    out += `<rect x="${rightX}" y="${cdY}" width="${rightW}" height="${cdH}"
-      fill="#111" rx="2"/>`;
-    const cfs = Math.min(9, Math.max(5, Math.round(cdH * 0.52)));
-    out += `<text x="${rightX + rightW/2}" y="${cdY + cdH/2}"
+    // Zona inferior: rectángulo negro con código IKEA en blanco
+    const cdY = ly + nameH + 2;
+    out += `<rect x="${lx}" y="${cdY}" width="${lw}" height="${cdH}"
+      fill="#111" rx="0 0 2 2"/>`;
+    const cfs = Math.min(10, Math.max(5, Math.round(cdH * 0.52)));
+    out += `<text x="${lx + lw/2}" y="${cdY + cdH/2}"
       text-anchor="middle" dominant-baseline="middle"
       font-family="Courier New,monospace" font-size="${cfs}"
-      font-weight="700" fill="white" letter-spacing="0.5">${code}</text>`;
+      font-weight="700" fill="white" letter-spacing="1">${code}</text>`;
 
   } else {
     // Caja muy pequeña — solo últimos 4 dígitos
     out += `<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle"
       font-size="7" font-weight="700" fill="white" opacity="0.9">${String(a.i).slice(-4)}</text>`;
   }
+
+  // ── Rect transparente encima de TODA la caja para el tooltip ─
+  // Cubre cara frontal + lateral + superior para que el hover
+  // funcione en cualquier punto de la caja
+  out += `<rect x="${x}" y="${y-ph}" width="${w+pw}" height="${h+ph}"
+    fill="transparent" class="shelf-svg-box" data-art="${artData}"
+    style="cursor:pointer"/>`;
 
   return out;
 }
@@ -408,10 +387,10 @@ function showShelfTT(e, a) {
   let h = `<div class="tt-an" style="font-size:12px;margin-bottom:6px;color:#1460b0">
     ${ikeaCode(a.i)} · ${firstWords(a.d, 5)}</div>`;
   h += `<div class="tt-r"><span class="tt-k">Descripción</span><span class="tt-v">${a.d || '—'}</span></div>`;
-  h += `<div class="tt-r"><span class="tt-k">Vta/sem</span>
-    <span class="tt-v" style="color:${a.s >= 5 ? 'var(--gn)' : 'var(--tx)'}">${a.s}</span></div>`;
+  h += `<div class="tt-r"><span class="tt-k">Vta/mes</span>
+    <span class="tt-v" style="color:${a.s >= CFG.rotacion ? 'var(--gn)' : 'var(--tx)'}">${a.s}</span></div>`;
   h += `<div class="tt-r"><span class="tt-k">Peso</span>
-    <span class="tt-v" style="color:${a.pe > 20 ? 'var(--or)' : 'var(--tx)'}">
+    <span class="tt-v" style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">
     ${a.pe > 0 ? a.pe + ' kg' : '—'}</span></div>`;
   h += `<div class="tt-r"><span class="tt-k">Vol. unit.</span>
     <span class="tt-v">${a.vo > 0 ? a.vo + ' dm³' : '—'}</span></div>`;

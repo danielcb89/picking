@@ -145,6 +145,17 @@ function safeStr(v) {
   return s === 'nan' || s === 'None' ? '' : s;
 }
 
+// Convierte un valor de fecha (serial Excel o string) a objeto Date, o null si no es válido
+function parseExcelDate(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') {
+    // Serial de fecha de Excel (días desde 1899-12-30)
+    return new Date(Math.round((v - 25569) * 86400 * 1000));
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 
 // ── PROCESADO DE ARTÍCULOS ───────────────────────────────────────
 
@@ -155,7 +166,7 @@ function processArticles(rows) {
     artcod:     findCol(s, ['artcod','codigo','cod','article','item']),
     descr:      findCol(s, ['descr','description','descripcion','desc','nombre']),
     assortment: findCol(s, ['assortment','surtido']),
-    semuds:     findCol(s, ['semuds','sem_uds','ventas_sem']),
+    semuds:     findCol(s, ['antuds','ant_uds','semuds','sem_uds','ventas_sem','ventas_mes']),
     pall:       findCol(s, ['pall','pallet']),
     mdq:        findCol(s, ['mdq','min_div']),
     peso:       findCol(s, ['peso','weight','kg']),
@@ -171,6 +182,7 @@ function processArticles(rows) {
     hfb:        findCol(s, ['hfb']),
     fam:        findCol(s, ['fam','familia']),
     socktotal:  findCol(s, ['socktotal','stocktotal','stock_total','sock_total']),
+    endsale:    findCol(s, ['endsaledate','end_sale_date','end sale date','fecha fin venta','fechafinventa']),
   };
   if (!C.artcod || !C.descr)
     throw new Error(`No se encontró artcod/descr. Columnas: ${Object.keys(s).join(', ')}`);
@@ -232,16 +244,17 @@ function processArticles(rows) {
       lc:  loc,    mx:  safeNum(r[C.maxpick]),    mn:  safeNum(r[C.minpick]),
       la:  locaux, mxa: safeNum(r[C.maxpickaux]), mna: safeNum(r[C.minpickaux]),
       wc:  pall <= 0 ? '?' : pall <= 30 ? 'Voluminoso' : pall <= 200 ? 'Mediano' : 'Pequeño',
+      es:  C.endsale ? parseExcelDate(r[C.endsale]) : null,
       pr:  calcPri(hasAnyLoc, semuds, pall),
     };
   }).filter(a => a && a.i);
 }
 
 function calcPri(hasAny, s, pl) {
-  if (!hasAny && s >= 5 && pl > 0 && pl <= 30)  return 'CRÍTICA';
-  if (!hasAny && s >= 5)                        return 'ALTA';
-  if (!hasAny && s > 0)                         return 'MEDIA';
-  if ( hasAny && s >= 5)                        return 'OK';
+  if (!hasAny && s >= CFG.rotacion && pl > 0 && pl <= 30) return 'CRÍTICA';
+  if (!hasAny && s >= CFG.rotacion)                       return 'ALTA';
+  if (!hasAny && s > 0)                                   return 'MEDIA';
+  if ( hasAny && s >= CFG.rotacion)                       return 'OK';
   return 'BAJA';
 }
 
@@ -292,8 +305,8 @@ function processUbicaciones(rows) {
     const isCen  = alm === 'CENTRAL';
     const arts   = (isCen ? artByLoc : artByLa)[code] || [];
     const artSnap = arts.map(a => isCen
-      ? { i: a.i, d: a.d, s: a.s, pl: a.pl, pe: a.pe, vo: a.vo, mx: a.mx,  mn: a.mn,  la: a.la, lc: a.lc }
-      : { i: a.i, d: a.d, s: a.s, pl: a.pl, pe: a.pe, vo: a.vo, mx: a.mxa, mn: a.mna, la: a.la, lc: a.lc }
+      ? { i: a.i, d: a.d, s: a.s, pl: a.pl, pe: a.pe, vo: a.vo, mx: a.mx,  mn: a.mn,  la: a.la, lc: a.lc, a: a.a }
+      : { i: a.i, d: a.d, s: a.s, pl: a.pl, pe: a.pe, vo: a.vo, mx: a.mxa, mn: a.mna, la: a.la, lc: a.lc, a: a.a }
     );
 
     // Volumen ocupado si se repone al máximo, y % de capacidad usada (solo picking/suelo)
@@ -304,8 +317,19 @@ function processUbicaciones(rows) {
       pctUsado = capDm3 > 0 ? (volOcup / capDm3 * 100) : null;
     }
 
+    // Pallets ocupados/libres — solo aplica a suelo (.0.0), capacidad fija de 3 pallets.
+    // Por cada artículo: pallets = ceil(max_reposición_uds / uds_por_pallet)
+    let palletsOcup = null, palletsFree = null;
+    if (type === 'suelo') {
+      palletsOcup = artSnap.reduce((sum, a) => {
+        if (!a.pl || a.pl <= 0 || !a.mx || a.mx <= 0) return sum;
+        return sum + Math.ceil(a.mx / a.pl);
+      }, 0);
+      palletsFree = Math.max(0, PALLETS_POR_SUELO - palletsOcup);
+    }
+
     const loc = { c: code, p, e, h, pos, cap, lt: type, almacen: isCen ? 'CENTRAL' : 'AUXILIAR1',
-                   arts: artSnap, capDm3, volOcup, pctUsado };
+                   arts: artSnap, capDm3, volOcup, pctUsado, palletsOcup, palletsFree };
     if (isCen) LOCS_C.push(loc); else LOCS_A.push(loc);
   });
 }
@@ -329,21 +353,42 @@ function calcAlerts() {
     });
   });
 
-  // BAD: artículos pesados y de alta rotación sin posición de suelo en ningún almacén
-  BAD = [];
+  // HEAVY: artículos pesados y de alta rotación sin posición de suelo en ningún almacén
+  HEAVY = [];
   [...LOCS_C, ...LOCS_A].forEach(loc => {
     if (loc.lt === 'suelo') return;
     loc.arts.forEach(a => {
-      if (a.pe <= 20 || a.s < 5) return;
+      if (a.pe <= CFG.pesado || a.s < CFG.rotacion) return;
       const floors = artFloor[a.i] || { c: false, a: false };
       if (floors.c || floors.a) return;
-      BAD.push({ loc: loc.c, lt: loc.lt, almacen: loc.almacen, i: a.i, d: a.d, pe: a.pe, pl: a.pl, s: a.s });
+      HEAVY.push({ loc: loc.c, lt: loc.lt, almacen: loc.almacen, i: a.i, d: a.d, pe: a.pe, pl: a.pl, s: a.s });
     });
   });
+
+  // BYE: artículos fuera de surtido (NS) que aún tienen localización asignada
+  // — un registro por cada localización que ocupan (puede estar en Central y/o Aux1)
+  BYE = [];
+  ARTS.filter(a => a.a === 'NS' && (a.lc || a.la)).forEach(a => {
+    if (a.lc) BYE.push({
+      i: a.i, d: a.d, loc: a.lc, almacen: 'CENTRAL',
+      mx: a.mx, mn: a.mn, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+    });
+    if (a.la) BYE.push({
+      i: a.i, d: a.d, loc: a.la, almacen: 'AUXILIAR1',
+      mx: a.mxa, mn: a.mna, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+    });
+  });
+  // NS_LOCS: lookup rápido de códigos de localización con algún artículo NS (para color en mapa)
+  NS_LOCS = new Set(BYE.map(b => b.loc));
 
   // LIBRE_ALL: todas las posiciones de picking y suelo, con sus datos de volumen
   // (la clasificación "libre / espacio disponible" se filtra luego según freeThreshold)
   LIBRE_ALL = [...LOCS_C, ...LOCS_A].filter(l => l.lt === 'picking' || l.lt === 'suelo');
+
+  // FLOOR_FREE: códigos de suelo con al menos 1 pallet libre (capacidad fija 3 pallets/suelo)
+  FLOOR_FREE = new Set(
+    LIBRE_ALL.filter(l => l.lt === 'suelo' && l.palletsFree > 0).map(l => l.c)
+  );
 
   // LOW_ROT: top 5 localizaciones de menor venta/sem, por almacén y tipo (suelo/picking)
   function top5LowSales(locsArr, lt) {
@@ -351,7 +396,7 @@ function calcAlerts() {
       .filter(l => l.lt === lt && l.arts.length)
       .map(l => ({ c: l.c, s: Math.min(...l.arts.map(a => a.s)) }))
       .sort((a, b) => a.s - b.s)
-      .slice(0, 5)
+      .slice(0, CFG.topN)
       .map(l => l.c);
   }
   LOW_ROT = {
@@ -366,7 +411,7 @@ function calcAlerts() {
     total_locs_a:  LOCS_A.length,
     total_arts:    ARTS.length,
     arts_with_loc: ARTS.filter(a => a.lc || a.la).length,
-    bad_weight:    BAD.length,
-    no_loc_high:   ARTS.filter(a => !a.lc && !a.la && a.s >= 5).length,
+    heavy_count:    HEAVY.length,
+    no_loc_high:   ARTS.filter(a => !a.lc && !a.la && a.s >= CFG.rotacion).length,
   };
 }

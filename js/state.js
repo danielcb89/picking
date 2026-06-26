@@ -9,7 +9,7 @@ let LOCS_C = [];   // Localizaciones del almacén CENTRAL
 let LOCS_A = [];   // Localizaciones del almacén AUXILIAR1
 let MAP_C  = {};   // Mapa CENTRAL:  pasillo -> estantería -> {s[], pk[]}
 let MAP_A  = {};   // Mapa AUXILIAR1: pasillo -> estantería -> {s[], pk[]}
-let BAD    = [];   // Localizaciones a revisar (peso > 20kg, ≥5/sem, sin suelo)
+let HEAVY  = [];   // Artículos pesados sin suelo (peso > CFG.pesado, vta ≥ CFG.rotacion, sin posición de suelo)
 let STATS  = {};   // Resumen de contadores para la cabecera
 let LOC_DATA = {}; // Lookup rápido: código_loc -> {cap, lt, arts, almacen}
 
@@ -20,10 +20,29 @@ let LOW_ROT = { csuelo: new Set(), cpick: new Set(), asuelo: new Set(), apick: n
 let LAYOUTS       = []; // Array de { nombre, grid } — una entrada por pestaña de layout
 let currentLayout = 0;  // Índice del layout activo en el selector de tabs
 
+// ── Configuración global (panel Ajustes) ────────────────────────
+const CFG_DEFAULTS = {
+  rotacion:    20,   // uds/mes — umbral de alta rotación
+  pesado:      20,   // kg — límite para considerar manipulación pesada
+  topN:        5,    // N — top menor rotación por almacén
+  espLibre:    50,   // % libre mínimo para Picking libre
+};
+let CFG = { ...CFG_DEFAULTS };
+
 // ── Picking libre / Espacio disponible ──────────────────────────
+const PALLETS_POR_SUELO = 3; // capacidad fija de pallets por localización de suelo
 let LIBRE_ALL     = []; // Todas las posiciones de picking + suelo, con datos de volumen
+let FLOOR_FREE    = new Set(); // Códigos de suelo con al menos 1 pallet libre (para color teal en mapa)
 let freeThreshold = 50; // % libre mínimo para considerar "espacio disponible" (25/50/75/100)
 let freeAlmacen   = '';  // Filtro de almacén: '' (ambos) | 'CENTRAL' | 'AUXILIAR1'
+let libreCardFilter = ''; // Filtro activo por tarjeta en Picking libre: '' | 'picking-c' | 'picking-a' | 'suelo-c' | 'suelo-a' | 'pallet-libre'
+let pesadosCardFilter = ''; // Filtro activo por tarjeta en Artículos pesados: '' | 'picking' | 'central' | 'aux'
+
+// ── Bye bye (artículos NS con localización asignada) ─────────────
+let BYE = []; // Array de artículos NS con loc — uno por cada localización que ocupan (Central y/o Aux1)
+let NS_LOCS = new Set(); // Lookup rápido: códigos de localización con algún artículo NS (color mapa)
+let byeSearch = '';
+let byeCardFilter = ''; // '' | 'central' | 'aux'
 
 // ── Estado de la vista Artículos ────────────────────────────────
 let filteredArts = [];
@@ -34,11 +53,12 @@ let sortD        = 'd';   // dirección: 'a' ascendente / 'd' descendente
 // ── Ordenación por clic en encabezados (Artículos, Revisar, Picking libre)
 let sortStates = {
   arts:  { k: 's',        d: 'd' },
-  peso:  { k: 's',        d: 'd' },
+  pesados: { k: 's',        d: 'd' },
   libre: { k: 'pctLibre', d: 'a' },
+  bye:   { k: 'endsale',  d: 'a' },
 };
 
-let pesoSearch  = ''; // término de búsqueda activo en Revisar localización
+let pesadosSearch = ''; // término de búsqueda activo en Artículos pesados
 let libreSearch = ''; // término de búsqueda activo en Picking libre
 
 // ── Constantes ──────────────────────────────────────────────────

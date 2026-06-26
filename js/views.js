@@ -48,8 +48,8 @@ function sortTable(name, key) {
     sortK = key; sortD = st.d;
     sortArtsData();
     renderArtsTable();
-  } else if (name === 'peso') {
-    renderPesoTable();
+  } else if (name === 'pesados') {
+    renderPesadosTable();
   } else {
     renderLibreTable();
   }
@@ -112,10 +112,10 @@ function renderArtsTable() {
       <td style="color:var(--b2);font-weight:600">${a.i}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${a.d}</td>
       <td><span class="badge ${a.a === 'S' ? 'b-gn' : a.a === 'NS' ? 'b-gy' : 'b-bl'}">${a.a || '—'}</span></td>
-      <td style="font-weight:700;color:${a.s >= 5 ? 'var(--gn)' : a.s > 0 ? 'var(--tx)' : 'var(--mu)'}">${a.s}</td>
+      <td style="font-weight:700;color:${a.s >= CFG.rotacion ? 'var(--gn)' : a.s > 0 ? 'var(--tx)' : 'var(--mu)'}">${a.s}</td>
       <td>${a.pl}</td>
       <td><span class="badge ${wcls(a.wc)}">${a.wc}</span></td>
-      <td style="color:${a.pe > 20 ? 'var(--or)' : 'var(--tx)'}">${a.pe > 0 ? a.pe + ' kg' : '—'}</td>
+      <td style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${a.pe > 0 ? a.pe + ' kg' : '—'}</td>
       <td>${a.vo > 0 ? a.vo + ' dm³' : '—'}</td>
       <td>${a.md || '<span style="color:var(--rd)">⚠ 0</span>'}</td>
       <td>${locC}</td>
@@ -126,7 +126,7 @@ function renderArtsTable() {
 
   document.getElementById('artsTbl').innerHTML = `<table>
     <thead><tr>
-      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts','s','Vta/sem')}
+      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts','s','Vta/mes')}
       ${th('arts','pl','Pallet')}${th('arts','wc','Tipo')}${th('arts','pe','Peso')}${th('arts','vo','Vol')}${th('arts','md','MDQ')}
       ${th('arts','lc','Loc Central (max/min)')}${th('arts','la','Loc Aux1 (max/min)')}${th('arts','pr','Prioridad')}
     </tr></thead>
@@ -166,7 +166,7 @@ function resetFilters() {
 }
 
 function exportArts() {
-  const hdr  = ['Código','Descripción','Surtido','Vta/sem','Pallet','Tipo peso','Peso kg','Vol dm3',
+  const hdr  = ['Código','Descripción','Surtido','Vta/mes','Pallet','Tipo peso','Peso kg','Vol dm3',
                  'MDQ','Loc Central','Max Central','Min Central','Loc Aux1','Max Aux1','Min Aux1','Prioridad'];
   const rows = filteredArts.map(a => [a.i, a.d, a.a, a.s, a.pl, a.wc, a.pe, a.vo, a.md,
                                        a.lc, a.mx, a.mn, a.la, a.mxa, a.mna, a.pr]);
@@ -176,55 +176,71 @@ function exportArts() {
 
 // ── REVISAR LOCALIZACIÓN ─────────────────────────────────────────
 
-function filterPeso(q) {
-  pesoSearch = (q || '').trim().toLowerCase();
-  renderPesoTable(); // solo actualiza tabla y contador, sin tocar el input
+function filterPesados(q) {
+  pesadosSearch = (q || '').trim().toLowerCase();
+  renderPesadosTable();
 }
 
-function renderPeso() {
-  const pk = BAD.filter(b => b.lt === 'picking').length;
-  const bc = BAD.filter(b => b.almacen === 'CENTRAL').length;
-  const ba = BAD.filter(b => b.almacen === 'AUXILIAR1').length;
+function setPesadosCardFilter(key) {
+  pesadosCardFilter = pesadosCardFilter === key ? '' : key;
+  renderPesados();
+}
 
-  document.getElementById('pesoCards').innerHTML = `
-    <div class="card">
+function renderPesados() {
+  const pk = HEAVY.filter(b => b.lt === 'picking').length;
+  const bc = HEAVY.filter(b => b.almacen === 'CENTRAL').length;
+  const ba = HEAVY.filter(b => b.almacen === 'AUXILIAR1').length;
+
+  const cardAct = key => pesadosCardFilter === key ? ' act-card' : '';
+
+  document.getElementById('pesadosCards').innerHTML = `
+    <div class="card card-click${cardAct('')}" onclick="setPesadosCardFilter('')">
       <div class="clbl">Total a revisar</div>
-      <div class="cval" style="color:var(--or)">${BAD.length}</div>
-      <div class="csub">peso >20kg + ≥5/sem + sin suelo en ningún almacén</div>
+      <div class="cval" style="color:var(--or)">${HEAVY.length}</div>
+      <div class="csub">peso >${CFG.pesado}kg + ≥${CFG.rotacion}/mes + sin suelo</div>
     </div>
-    <div class="card">
+    <div class="card card-click${cardAct('picking')}" onclick="setPesadosCardFilter('picking')">
       <div class="clbl">En picking</div>
       <div class="cval" style="color:var(--yw)">${pk}</div>
       <div class="csub">nivel de balda</div>
     </div>
-    <div class="card">
-      <div class="clbl">Central / Aux1</div>
-      <div class="cval" style="color:var(--mu);font-size:16px;margin-top:4px">${bc} / ${ba}</div>
-      <div class="csub">por almacén</div>
+    <div class="card card-click${cardAct('central')}" onclick="setPesadosCardFilter('central')">
+      <div class="clbl">Central</div>
+      <div class="cval" style="color:var(--b2)">${bc}</div>
+      <div class="csub">localizaciones</div>
+    </div>
+    <div class="card card-click${cardAct('aux')}" onclick="setPesadosCardFilter('aux')">
+      <div class="clbl">Auxiliar1</div>
+      <div class="cval" style="color:var(--aux-lbl)">${ba}</div>
+      <div class="csub">localizaciones</div>
     </div>`;
 
-  // Toolbar: se inicializa solo la primera vez, luego solo actualiza contador
-  if (!document.getElementById('pesoSearchInput')) {
-    document.getElementById('pesoToolbar').innerHTML = `
-      <input class="sbox" id="pesoSearchInput" type="text"
+  if (!document.getElementById('pesadosSearchInput')) {
+    document.getElementById('pesadosToolbar').innerHTML = `
+      <input class="sbox" id="pesadosSearchInput" type="text"
         placeholder="Buscar artículo, código, localización..."
-        oninput="filterPeso(this.value)">
-      <span class="rowcnt-lbl" id="pesoCount"></span>
+        oninput="filterPesados(this.value)">
+      <span class="rowcnt-lbl" id="pesadosCount"></span>
       <button class="btn-exp" onclick="exportPeso()">↓ CSV</button>`;
   }
 
-  renderPesoTable();
+  renderPesadosTable();
 }
 
-function renderPesoTable() {
-  const filtered = pesoSearch
-    ? sortArrBy(BAD, sortStates.peso.k, sortStates.peso.d)
-        .filter(b => b.i.toLowerCase().includes(pesoSearch)
-                  || b.d.toLowerCase().includes(pesoSearch)
-                  || b.loc.toLowerCase().includes(pesoSearch))
-    : sortArrBy(BAD, sortStates.peso.k, sortStates.peso.d);
+function renderPesadosTable() {
+  let base = HEAVY;
+  if (pesadosCardFilter === 'picking') base = base.filter(b => b.lt === 'picking');
+  if (pesadosCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
+  if (pesadosCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
 
-  const cnt = document.getElementById('pesoCount');
+  const filtered = pesadosSearch
+    ? sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d)
+        .filter(b => b.i.toLowerCase().includes(pesadosSearch)
+                  || b.d.toLowerCase().includes(pesadosSearch)
+                  || b.loc.toLowerCase().includes(pesadosSearch))
+    : sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d);
+
+  const cnt = document.getElementById('pesadosCount');
   if (cnt) cnt.textContent = filtered.length.toLocaleString() + ' registros';
 
   const rows = filtered.map(b => `<tr>
@@ -234,14 +250,14 @@ function renderPesoTable() {
     <td>${b.i}</td>
     <td style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${b.d}</td>
     <td style="color:var(--or);font-weight:700">${b.pe} kg</td>
-    <td style="color:${b.s >= 5 ? 'var(--gn)' : 'var(--tx)'};font-weight:700">${b.s}</td>
+    <td style="color:${b.s >= CFG.rotacion ? 'var(--gn)' : 'var(--tx)'};font-weight:700">${b.s}</td>
     <td><span class="badge b-or">Mover a .0.0</span></td>
   </tr>`).join('');
 
-  document.getElementById('pesoTbl').innerHTML = `<table>
+  document.getElementById('pesadosTbl').innerHTML = `<table>
     <thead><tr>
-      ${th('peso','loc','Localización')}${th('peso','almacen','Almacén')}${th('peso','lt','Tipo')}${th('peso','i','Artículo')}
-      ${th('peso','d','Descripción')}${th('peso','pe','Peso')}${th('peso','s','Vta/sem')}<th>Acción</th>
+      ${th('pesados','loc','Localización')}${th('pesados','almacen','Almacén')}${th('pesados','lt','Tipo')}${th('pesados','i','Artículo')}
+      ${th('pesados','d','Descripción')}${th('pesados','pe','Peso')}${th('pesados','s','Vta/mes')}<th>Acción</th>
     </tr></thead>
     <tbody>${rows || '<tr><td colspan="8" style="text-align:center;color:var(--gn);padding:28px">✓ Sin localizaciones a revisar</td></tr>'}</tbody>
   </table>`;
@@ -274,7 +290,16 @@ function setFreeAlmacen(val) {
 
 function filterLibre(q) {
   libreSearch = (q || '').trim().toLowerCase();
-  renderLibreTable(); // solo actualiza tabla y contador, sin tocar el input
+  renderLibreTable();
+}
+
+function setLibreCardFilter(key) {
+  libreCardFilter = libreCardFilter === key ? '' : key;
+  renderLibreTable();
+  // Resaltar tarjeta activa sin tener que re-renderizar todo el bloque de tarjetas
+  document.querySelectorAll('#libreCards .card-click').forEach(c =>
+    c.classList.toggle('act-card', c.dataset.key === libreCardFilter)
+  );
 }
 
 function renderLibre() {
@@ -287,35 +312,43 @@ function renderLibre() {
   const sfA = lA.filter(f => f.lt === 'suelo').length;
   const vacios = list.filter(f => !f.arts.length).length;
   const infra  = list.length - vacios;
+  const palletFreeLocs = list.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
+  const palletFreeSum  = palletFreeLocs.reduce((s, f) => s + (f.palletsFree || 0), 0);
+
+  const cardAct = key => libreCardFilter === key ? ' act-card' : '';
 
   document.getElementById('libreCards').innerHTML = `
-    <div class="card">
+    <div class="card card-click${cardAct('')}" data-key="" onclick="setLibreCardFilter('')">
       <div class="clbl">Total con ≥${freeThreshold}% libre</div>
       <div class="cval" style="color:var(--gn)">${list.length}</div>
       <div class="csub">${vacios} vacías + ${infra} infrautilizadas</div>
     </div>
-    <div class="card">
+    <div class="card card-click${cardAct('picking-c')}" data-key="picking-c" onclick="setLibreCardFilter('picking-c')">
       <div class="clbl">Picking Central</div>
       <div class="cval" style="color:var(--gn)">${pkC}</div>
       <div class="csub">baldas con espacio</div>
     </div>
-    <div class="card">
+    <div class="card card-click${cardAct('suelo-c')}" data-key="suelo-c" onclick="setLibreCardFilter('suelo-c')">
       <div class="clbl">Suelo Central</div>
       <div class="cval" style="color:var(--b2)">${sfC}</div>
       <div class="csub">posiciones con espacio</div>
     </div>
-    <div class="card">
+    <div class="card card-click${cardAct('picking-a')}" data-key="picking-a" onclick="setLibreCardFilter('picking-a')">
       <div class="clbl">Picking Aux1</div>
       <div class="cval" style="color:var(--aux-lbl)">${pkA}</div>
       <div class="csub">baldas con espacio</div>
     </div>
-    <div class="card">
+    <div class="card card-click${cardAct('suelo-a')}" data-key="suelo-a" onclick="setLibreCardFilter('suelo-a')">
       <div class="clbl">Suelo Aux1</div>
       <div class="cval" style="color:var(--aux-lbl)">${sfA}</div>
       <div class="csub">posiciones con espacio</div>
+    </div>
+    <div class="card card-click${cardAct('pallet-libre')}" data-key="pallet-libre" onclick="setLibreCardFilter('pallet-libre')">
+      <div class="clbl">🟦 Pallet libre en suelo</div>
+      <div class="cval" style="color:var(--teal)">${palletFreeLocs.length}</div>
+      <div class="csub">${palletFreeSum} pallets · cap. ${PALLETS_POR_SUELO}/suelo</div>
     </div>`;
 
-  // Toolbar: se inicializa solo la primera vez, luego solo actualiza contador
   if (!document.getElementById('libreSearchInput')) {
     document.getElementById('libreToolbar').innerHTML = `
       <input class="sbox" id="libreSearchInput" type="text"
@@ -331,11 +364,19 @@ function renderLibre() {
 function renderLibreTable() {
   const list        = computeLibre(freeThreshold, freeAlmacen);
   const withDerived = list.map(f => ({ ...f, pctLibre: f.pctUsado === null ? null : 100 - f.pctUsado }));
-  const filtered    = libreSearch
-    ? withDerived.filter(f => f.c.toLowerCase().includes(libreSearch)
-                            || f.almacen.toLowerCase().includes(libreSearch)
-                            || f.lt.toLowerCase().includes(libreSearch))
-    : withDerived;
+
+  let base = withDerived;
+  if (libreCardFilter === 'picking-c')   base = base.filter(f => f.lt === 'picking' && f.almacen === 'CENTRAL');
+  if (libreCardFilter === 'suelo-c')     base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'CENTRAL');
+  if (libreCardFilter === 'picking-a')   base = base.filter(f => f.lt === 'picking' && f.almacen === 'AUXILIAR1');
+  if (libreCardFilter === 'suelo-a')     base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'AUXILIAR1');
+  if (libreCardFilter === 'pallet-libre') base = base.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
+
+  const filtered = libreSearch
+    ? base.filter(f => f.c.toLowerCase().includes(libreSearch)
+                     || f.almacen.toLowerCase().includes(libreSearch)
+                     || f.lt.toLowerCase().includes(libreSearch))
+    : base;
 
   const cnt = document.getElementById('libreCount');
   if (cnt) cnt.textContent = filtered.length.toLocaleString() + ' registros';
@@ -349,6 +390,11 @@ function renderLibreTable() {
       const pctLTxt = pctL === null ? '—' : pctL + '%';
       const volTxt  = f.volOcup === null ? '—' : Math.round(f.volOcup) + ' dm³';
       const capTxt  = f.capDm3  === null ? '—' : Math.round(f.capDm3)  + ' dm³';
+      const palletTxt = f.lt === 'suelo' && f.palletsFree !== null
+        ? (f.palletsFree > 0
+            ? `<span class="badge b-teal">🟦 ${f.palletsFree}/${PALLETS_POR_SUELO} libres</span>`
+            : `<span class="badge b-gy">0/${PALLETS_POR_SUELO}</span>`)
+        : '—';
       const estado  = vacio
         ? '<span class="badge b-gn">✓ Vacío</span>'
         : `<span class="badge b-bl">◐ ${f.arts.length} art. · ${pctLTxt} libre</span>`;
@@ -362,6 +408,7 @@ function renderLibreTable() {
         <td>${volTxt}</td>
         <td style="font-weight:700;color:${pctU !== null && pctU > 0 ? 'var(--tx)' : 'var(--mu)'}">${pctUTxt}</td>
         <td style="font-weight:700;color:var(--gn)">${pctLTxt}</td>
+        <td>${palletTxt}</td>
         <td>${estado}</td>
       </tr>`;
     }).join('');
@@ -370,9 +417,106 @@ function renderLibreTable() {
     <thead><tr>
       ${th('libre','c','Localización')}${th('libre','almacen','Almacén')}${th('libre','p','Pasillo')}${th('libre','e','Estantería')}
       ${th('libre','lt','Tipo')}${th('libre','capDm3','Cap. (dm³)')}${th('libre','volOcup','Vol. ocupado (máx repos.)')}
-      ${th('libre','pctUsado','% Ocupado')}${th('libre','pctLibre','% Libre')}<th>Estado</th>
+      ${th('libre','pctUsado','% Ocupado<span class="help-ico left-align" data-tip="Volumen que ocuparían los artículos de esa posición si estuvieran repuestos al máximo, respecto a la capacidad real de la localización." onclick="event.stopPropagation()">?</span>')}${th('libre','pctLibre','% Libre')}${th('libre','palletsFree','Pallets libres')}<th>Estado</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:var(--mu);padding:28px">Sin ubicaciones con espacio disponible para este umbral</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="11" style="text-align:center;color:var(--mu);padding:28px">Sin ubicaciones con espacio disponible para este umbral</td></tr>'}</tbody>
+  </table>`;
+}
+
+
+// ── BYE BYE (artículos NS con localización asignada) ─────────────
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+function filterBye(q) {
+  byeSearch = (q || '').trim().toLowerCase();
+  renderByeTable();
+}
+
+function setByeCardFilter(key) {
+  byeCardFilter = byeCardFilter === key ? '' : key;
+  renderByeTable();
+  document.querySelectorAll('#byeCards .card-click').forEach(c =>
+    c.classList.toggle('act-card', c.dataset.key === byeCardFilter)
+  );
+}
+
+function renderBye() {
+  const bc = BYE.filter(b => b.almacen === 'CENTRAL').length;
+  const ba = BYE.filter(b => b.almacen === 'AUXILIAR1').length;
+
+  const cardAct = key => byeCardFilter === key ? ' act-card' : '';
+
+  document.getElementById('byeCards').innerHTML = `
+    <div class="card card-click${cardAct('')}" data-key="" onclick="setByeCardFilter('')">
+      <div class="clbl">Total NS con localización</div>
+      <div class="cval" style="color:var(--mu)">${BYE.length}</div>
+      <div class="csub">artículos fuera de surtido aún ubicados</div>
+    </div>
+    <div class="card card-click${cardAct('central')}" data-key="central" onclick="setByeCardFilter('central')">
+      <div class="clbl">Central</div>
+      <div class="cval" style="color:var(--b2)">${bc}</div>
+      <div class="csub">localizaciones</div>
+    </div>
+    <div class="card card-click${cardAct('aux')}" data-key="aux" onclick="setByeCardFilter('aux')">
+      <div class="clbl">Auxiliar1</div>
+      <div class="cval" style="color:var(--aux-lbl)">${ba}</div>
+      <div class="csub">localizaciones</div>
+    </div>`;
+
+  if (!document.getElementById('byeSearchInput')) {
+    document.getElementById('byeToolbar').innerHTML = `
+      <input class="sbox" id="byeSearchInput" type="text"
+        placeholder="Buscar artículo, código, localización..."
+        oninput="filterBye(this.value)">
+      <span class="rowcnt-lbl" id="byeCount"></span>
+      <button class="btn-exp" onclick="exportBye()">↓ CSV</button>`;
+  }
+
+  renderByeTable();
+}
+
+function renderByeTable() {
+  let base = BYE;
+  if (byeCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
+  if (byeCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+
+  const filtered = byeSearch
+    ? base.filter(b => b.i.toLowerCase().includes(byeSearch)
+                     || b.d.toLowerCase().includes(byeSearch)
+                     || b.loc.toLowerCase().includes(byeSearch))
+    : base;
+
+  const cnt = document.getElementById('byeCount');
+  if (cnt) cnt.textContent = filtered.length.toLocaleString() + ' registros';
+
+  const sorted = sortArrBy(filtered, sortStates.bye.k, sortStates.bye.d);
+
+  const rows = sorted.map(b => `<tr>
+    <td style="color:${b.almacen === 'AUXILIAR1' ? 'var(--aux-lbl)' : 'var(--b2)'};font-weight:600">${b.loc}</td>
+    <td><span class="badge ${b.almacen === 'AUXILIAR1' ? 'b-pu' : 'b-bl'}">${b.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central'}</span></td>
+    <td>${b.i}</td>
+    <td style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${b.d}</td>
+    <td>${b.mx ?? '—'}</td>
+    <td>${b.mn ?? '—'}</td>
+    <td style="color:${b.s >= CFG.rotacion ? 'var(--gn)' : 'var(--tx)'}">${b.s}</td>
+    <td style="color:${b.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${b.pe > 0 ? b.pe + ' kg' : '—'}</td>
+    <td>${b.md || '<span style="color:var(--rd)">⚠ 0</span>'}</td>
+    <td style="font-weight:600;color:${b.endsale ? 'var(--or)' : 'var(--mu)'}">${fmtDate(b.endsale)}</td>
+  </tr>`).join('');
+
+  document.getElementById('byeTbl').innerHTML = `<table>
+    <thead><tr>
+      ${th('bye','loc','Localización')}${th('bye','almacen','Almacén')}${th('bye','i','Artículo')}
+      ${th('bye','d','Descripción')}${th('bye','mx','Max')}${th('bye','mn','Min')}
+      ${th('bye','s','Vta/mes')}${th('bye','pe','Peso')}${th('bye','md','MDQ')}${th('bye','endsale','Fin venta')}
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:var(--gn);padding:28px">✓ Sin artículos NS con localización asignada</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -390,23 +534,46 @@ function csvDownload(filename, hdr, rows) {
   a.click();
 }
 
-function exportPeso() {
-  const hdr  = ['Localización','Almacén','Tipo','Artículo','Descripción','Peso kg','Vta/sem'];
-  const rows = sortArrBy(BAD, sortStates.peso.k, sortStates.peso.d)
+function exportPesados() {
+  let base = HEAVY;
+  if (pesadosCardFilter === 'picking') base = base.filter(b => b.lt === 'picking');
+  if (pesadosCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
+  if (pesadosCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+
+  const hdr  = ['Localización','Almacén','Tipo','Artículo','Descripción','Peso kg','Vta/mes'];
+  const rows = sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d)
     .map(b => [b.loc, b.almacen, b.lt, b.i, b.d, b.pe, b.s]);
   csvDownload('wms_revisar', hdr, rows);
 }
 
 function exportLibre() {
-  const list = computeLibre(freeThreshold, freeAlmacen);
-  const hdr  = ['Localización','Almacén','Pasillo','Estantería','Tipo','Cap. (dm³)','Vol. ocupado (dm³)','% Ocupado','% Libre'];
-  const rows = sortArrBy(list, sortStates.libre.k, sortStates.libre.d).map(f => {
+  let base = computeLibre(freeThreshold, freeAlmacen);
+  if (libreCardFilter === 'picking-c')    base = base.filter(f => f.lt === 'picking' && f.almacen === 'CENTRAL');
+  if (libreCardFilter === 'suelo-c')      base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'CENTRAL');
+  if (libreCardFilter === 'picking-a')    base = base.filter(f => f.lt === 'picking' && f.almacen === 'AUXILIAR1');
+  if (libreCardFilter === 'suelo-a')      base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'AUXILIAR1');
+  if (libreCardFilter === 'pallet-libre') base = base.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
+
+  const hdr  = ['Localización','Almacén','Pasillo','Estantería','Tipo','Cap. (dm³)','Vol. ocupado (dm³)','% Ocupado','% Libre','Pallets libres'];
+  const rows = sortArrBy(base, sortStates.libre.k, sortStates.libre.d).map(f => {
     const pctU = f.pctUsado !== null && isFinite(f.pctUsado) ? Math.round(f.pctUsado) : '';
     const pctL = pctU !== '' ? 100 - pctU : '';
     return [f.c, f.almacen, f.p, f.e, f.lt,
             f.capDm3  ? Math.round(f.capDm3)  : '',
             f.volOcup ? Math.round(f.volOcup) : '',
-            pctU, pctL];
+            pctU, pctL,
+            f.lt === 'suelo' && f.palletsFree !== null ? f.palletsFree + '/' + PALLETS_POR_SUELO : ''];
   });
   csvDownload('wms_libre', hdr, rows);
+}
+
+function exportBye() {
+  let base = BYE;
+  if (byeCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
+  if (byeCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+
+  const hdr  = ['Localización','Almacén','Artículo','Descripción','Max','Min','Vta/mes','Peso kg','MDQ','Fin venta'];
+  const rows = sortArrBy(base, sortStates.bye.k, sortStates.bye.d)
+    .map(b => [b.loc, b.almacen, b.i, b.d, b.mx, b.mn, b.s, b.pe, b.md, fmtDate(b.endsale)]);
+  csvDownload('wms_byebye', hdr, rows);
 }

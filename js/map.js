@@ -12,7 +12,8 @@ function buildMaps() {
 
   function addToMap(MAP, loc) {
     LOC_DATA[loc.c] = { cap: loc.cap, lt: loc.lt, arts: loc.arts, almacen: loc.almacen,
-                        capDm3: loc.capDm3, volOcup: loc.volOcup, pctUsado: loc.pctUsado };
+                        capDm3: loc.capDm3, volOcup: loc.volOcup, pctUsado: loc.pctUsado,
+                        palletsOcup: loc.palletsOcup, palletsFree: loc.palletsFree };
     if (loc.lt === 'altura') return;
     const p = String(loc.p), e = String(loc.e);
     if (!MAP[p])    MAP[p]    = {};
@@ -71,7 +72,7 @@ function cellClass(p, e, alm) {
 
   // ¿Alguna localización tiene artículo a revisar?
   const hasRevisar = allLocs.some(l =>
-    (l.arts || []).some(a => a.pe > 20 && a.s >= 5) &&
+    (l.arts || []).some(a => a.pe > CFG.pesado && a.s >= CFG.rotacion) &&
     !est.s.some(sl => sl.arts && sl.arts.length) // sin suelo ocupado
   );
   if (hasRevisar) return 'cp-rev';
@@ -81,6 +82,13 @@ function cellClass(p, e, alm) {
   const lowPick  = alm === 'AUXILIAR1' ? LOW_ROT.apick  : LOW_ROT.cpick;
   const allCodes = allLocs.map(l => l.c);
   if (allCodes.some(c => lowSuelo.has(c) || lowPick.has(c))) return 'x-low';
+
+  // ¿Tiene algún suelo con pallet libre (capacidad fija 3, hueco aunque tenga artículos)?
+  const sueloCodes = (est.s || []).map(l => l.c);
+  if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
+
+  // ¿Tiene algún artículo fuera de surtido (NS) próximo a dejar de venderse?
+  if (allCodes.some(c => NS_LOCS.has(c))) return 'x-ns';
 
   // ¿Hay alguna localización ocupada?
   const anyOcc = allLocs.some(l => l.arts && l.arts.length);
@@ -262,7 +270,7 @@ function showTT(e, el) {
   h += `<div class="tt-row-art tt-col-header">
     <span class="tt-row-code">Código</span>
     <span class="tt-row-desc">Descripción</span>
-    <span class="tt-row-stat">Vta/s</span>
+    <span class="tt-row-stat">Vta/mes</span>
     <span class="tt-row-stat">Peso</span>
     <span class="tt-row-warn"></span>
   </div>`;
@@ -288,6 +296,11 @@ function showTT(e, el) {
         <span class="tt-row-cap">${cap > 0 ? cap + ' m²' : ''}</span>
       </div>`;
 
+    if (isFloor && ld.palletsFree !== null && ld.palletsFree > 0) {
+      h += `<div class="tt-row-pallet">🟦 ${ld.palletsFree}/${PALLETS_POR_SUELO} pallets libres
+        <span style="color:var(--mu);font-weight:400">(${ld.palletsOcup} ocupados)</span></div>`;
+    }
+
     if (!arts.length) {
       h += `<div class="tt-row-art tt-row-empty">
         <span class="tt-row-code">—</span>
@@ -298,14 +311,15 @@ function showTT(e, el) {
       </div>`;
     } else {
       arts.forEach(a => {
-        const revisar = a.pe > 20 && a.s >= 5 && !isFloor;
+        const revisar = a.pe > CFG.pesado && a.s >= CFG.rotacion && !isFloor;
         const lowArt  = isLow && a.s === minS;
+        const nsArt   = a.a === 'NS';
         h += `<div class="tt-row-art">
           <span class="tt-row-code">${a.i}</span>
           <span class="tt-row-desc">${firstWords(a.d, 4)}</span>
-          <span class="tt-row-stat" style="color:${a.s >= 5 ? 'var(--gn)' : a.s < 0 ? 'var(--rd)' : 'var(--mu)'}">${a.s}</span>
-          <span class="tt-row-stat" style="color:${a.pe > 20 ? 'var(--or)' : 'var(--mu)'}">${a.pe > 0 ? a.pe + 'kg' : '—'}</span>
-          <span class="tt-row-warn">${revisar ? '🟠' : ''}${lowArt ? '🟣' : ''}</span>
+          <span class="tt-row-stat" style="color:${a.s >= CFG.rotacion ? 'var(--gn)' : a.s < 0 ? 'var(--rd)' : 'var(--mu)'}">${a.s}</span>
+          <span class="tt-row-stat" style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--mu)'}">${a.pe > 0 ? a.pe + 'kg' : '—'}</span>
+          <span class="tt-row-warn">${revisar ? '🟠' : ''}${lowArt ? '🟣' : ''}${nsArt ? '🔘' : ''}</span>
         </div>`;
       });
     }
