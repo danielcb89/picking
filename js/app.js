@@ -60,10 +60,7 @@ function showApp() {
   // Rellenar pills de la cabecera
   document.getElementById('hLocsC').textContent  = STATS.total_locs_c.toLocaleString();
   document.getElementById('hLocsA').textContent  = STATS.total_locs_a.toLocaleString();
-  document.getElementById('hArts').textContent   = STATS.total_arts.toLocaleString();
   document.getElementById('hConLoc').textContent = STATS.arts_with_loc.toLocaleString();
-  document.getElementById('hHeavy').textContent    = STATS.heavy_count.toLocaleString();
-  document.getElementById('hNoLoc').textContent  = STATS.no_loc_high.toLocaleString();
 
   // Generar tabs de layout (solo si hay más de uno)
   const tabsEl = document.getElementById('layoutTabs');
@@ -181,9 +178,6 @@ function applyConfig() {
   renderPesados();
   renderLibre();
   renderBye();
-  // Actualizar pill cabecera
-  document.getElementById('hHeavy').textContent   = STATS.heavy_count.toLocaleString();
-  document.getElementById('hNoLoc').textContent = STATS.no_loc_high.toLocaleString();
   // Feedback visual
   const btn = document.querySelector('.cfg-btn-apply');
   const orig = btn.textContent;
