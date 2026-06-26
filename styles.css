@@ -20,6 +20,9 @@
   --rd:  #c0392b;
   --or:  #b85c00;
 
+  /* Pallet libre en suelo — verde azulado, distinto de aux-lbl para no confundir con Auxiliar1 */
+  --teal: #00897b;
+
   /* Auxiliar1 — teal para diferenciar de Central */
   --aux-bg: rgba(0,120,100,.07);
   --aux-bd: rgba(0,120,100,.45);
@@ -261,6 +264,9 @@ header > * { padding: 8px 14px; }
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  overflow-x: visible;
+  position: relative;
+  z-index: 50;
 }
 
 .slbl {
@@ -378,6 +384,33 @@ input:focus {
 .cval { font-size:24px; font-weight:700; letter-spacing:-1px; color:#1a3a5c; }
 .csub { font-size:9px; color:var(--mu); margin-top:2px; }
 
+/* Tarjeta clicable — actúa como filtro de la tabla de abajo */
+.card-click {
+  cursor: pointer;
+  transition: all .15s;
+  position: relative;
+}
+.card-click:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,80,160,.22), var(--win-inset);
+  border-color: var(--ac);
+}
+.card-click.act-card {
+  border-color: var(--ac);
+  border-width: 2px;
+  background: linear-gradient(180deg, rgba(220,240,255,.95) 0%, rgba(190,220,250,.95) 100%);
+  box-shadow: 0 0 0 1px var(--ac), var(--win-shadow);
+}
+.card-click.act-card::after {
+  content: '✓';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ac);
+}
+
 
 /* ════════════════════════════════════════════════════════════════
    TABLAS
@@ -419,6 +452,7 @@ tr:last-child      td { border-bottom:none; }
 .b-gy  { background:rgba(106,122,138,.12);color:#37474f; border-color:rgba(106,122,138,.35);}
 .b-or  { background:rgba(184,92,0,.12);   color:#7a3a00; border-color:rgba(184,92,0,.35);   }
 .b-pu  { background:rgba(0,120,100,.12);  color:#004d40; border-color:rgba(0,120,100,.35);  }
+.b-teal{ background:rgba(0,137,123,.14);  color:#00554a; border-color:rgba(0,137,123,.4);   font-weight:800; }
 
 /* Toolbar de artículos */
 .toolbar    { display:flex; gap:8px; align-items:center; margin-bottom:11px; flex-wrap:wrap; }
@@ -567,6 +601,12 @@ tr:last-child      td { border-bottom:none; }
 
 /* Top 5 menor rotación — violeta */
 .x-low { background:rgba(142,68,173,.5); border-color:rgba(142,68,173,.8); }
+
+/* Pallet libre en suelo (capacidad fija 3/suelo) — teal */
+.x-pallet { background:rgba(0,137,123,.45); border-color:rgba(0,137,123,.75); }
+
+/* Artículo fuera de surtido (NS) — próximo a dejar de venderse, gris azulado */
+.x-ns { background:rgba(90,110,135,.45); border-color:rgba(90,110,135,.75); }
 
 /* Resaltado de búsqueda — pulso amarillo */
 .loc-cell.map-highlight {
@@ -731,6 +771,86 @@ tr:last-child      td { border-bottom:none; }
 
 
 /* ════════════════════════════════════════════════════════════════
+   AYUDA CONTEXTUAL — icono (?) con tooltip CSS puro al hover
+   ════════════════════════════════════════════════════════════════ */
+.help-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: rgba(106,122,138,.18);
+  color: var(--mu);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: background .15s, color .15s;
+}
+.help-ic:hover { background: var(--ac); color: #fff; }
+
+.help-ic .help-bubble {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 230px;
+  background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(225,238,250,.98) 100%);
+  border: 1px solid var(--win-border-dark);
+  border-radius: 4px;
+  padding: 9px 11px;
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--tx);
+  text-transform: none;
+  letter-spacing: normal;
+  box-shadow: 0 4px 16px rgba(0,60,140,.25), 0 1px 3px rgba(0,0,0,.15);
+  z-index: 500;
+  cursor: default;
+  white-space: normal;
+}
+.help-ic:hover .help-bubble { display: block; }
+
+/* Flechita apuntando hacia el icono */
+.help-ic .help-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--win-border-dark);
+}
+.help-ic .help-bubble::before {
+  content: '';
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: #e8f2fc;
+  z-index: 1;
+}
+
+/* Variante para usar dentro de filas de leyenda (alineación a la izquierda del bubble) */
+.leg .help-ic .help-bubble { left: 0; transform: none; }
+.leg .help-ic .help-bubble::after,
+.leg .help-ic .help-bubble::before { left: 10px; transform: none; }
+
+/* Variante para usar en items de navegación oscuros (sidebar) */
+.nav .help-ic { background: rgba(255,255,255,.25); color: rgba(255,255,255,.9); }
+.nav.act .help-ic { background: rgba(255,255,255,.3); }
+.nav .help-ic:hover { background: #fff; color: var(--ac); }
+
+
+/* ════════════════════════════════════════════════════════════════
    TOOLTIP
    ════════════════════════════════════════════════════════════════ */
 .tt {
@@ -811,6 +931,14 @@ tr:last-child      td { border-bottom:none; }
 .tt-row-desc  { color:var(--mu); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; }
 .tt-row-stat  { font-weight:600; font-size:9px; text-align:right; }
 .tt-row-warn  { font-size:10px; text-align:center; }
+.tt-row-pallet {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--teal);
+  background: rgba(0,137,123,.08);
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(168,191,208,.2);
+}
 .tt-code        { font-size:12px; font-weight:700; color:#1460b0; margin-bottom:5px; }
 .tt-code.aux    { color:var(--aux-lbl); }
 .tt-r           { display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; }
@@ -839,10 +967,246 @@ tr:last-child      td { border-bottom:none; }
 
 
 /* ════════════════════════════════════════════════════════════════
+   PANEL DE AJUSTES
+   ════════════════════════════════════════════════════════════════ */
+
+.cfg-wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 4px 0 40px;
+}
+
+/* Cabecera del panel */
+.cfg-header  { margin-bottom: 24px; }
+.cfg-title   { font-size: 20px; font-weight: 700; color: #1a3a5c; margin-bottom: 6px; }
+.cfg-sub     { font-size: 12px; color: var(--mu); line-height: 1.6; }
+
+/* Grid de tarjetas — 2 columnas en escritorio */
+.cfg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Tarjeta de ajuste individual */
+.cfg-card {
+  background: linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(220,234,248,.92) 100%);
+  border: 1px solid var(--win-border-dark);
+  border-radius: 6px;
+  padding: 18px 20px;
+  box-shadow: var(--win-shadow), var(--win-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cfg-card-icon  { font-size: 22px; line-height: 1; }
+.cfg-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a3a5c;
+  border-bottom: 1px solid var(--win-border-dark);
+  padding-bottom: 8px;
+}
+.cfg-card-desc {
+  font-size: 11px;
+  color: var(--mu);
+  line-height: 1.65;
+}
+.cfg-card-desc strong { color: #1a3a5c; }
+
+/* Botones de opción predefinida */
+.cfg-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cfg-opt {
+  background: linear-gradient(180deg, #f5f9fe 0%, #ddeaf8 100%);
+  border: 1px solid var(--win-border-dark);
+  border-radius: 3px;
+  color: #1a4a8a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: var(--win-inset);
+}
+.cfg-opt:hover { background: linear-gradient(180deg,#fff 0%,#c8dcf0 100%); }
+.cfg-opt.act {
+  background: linear-gradient(180deg, #3a9ae8 0%, #1560b0 100%);
+  color: #fff;
+  border-color: #1458a0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 1px 3px rgba(0,0,0,.15);
+}
+
+/* Input personalizado */
+.cfg-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cfg-custom label {
+  font-size: 10px;
+  color: var(--mu);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  white-space: nowrap;
+}
+.cfg-custom input {
+  width: 90px !important;
+  padding: 5px 8px !important;
+  font-size: 12px !important;
+}
+
+/* Valor activo */
+.cfg-current {
+  font-size: 10px;
+  color: var(--mu);
+  padding: 5px 10px;
+  background: rgba(26,107,191,.07);
+  border: 1px solid rgba(26,107,191,.2);
+  border-radius: 3px;
+  text-align: center;
+}
+.cfg-current strong {
+  color: var(--ac);
+  font-size: 13px;
+}
+
+/* Footer con botones de acción */
+.cfg-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--win-border-dark);
+}
+
+.cfg-btn-reset {
+  background: linear-gradient(180deg, #f5f9fe 0%, #ddeaf8 100%);
+  border: 1px solid var(--win-border-dark);
+  color: #1a4a8a;
+  padding: 8px 20px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: var(--win-inset);
+}
+.cfg-btn-reset:hover { background: linear-gradient(180deg,#fff 0%,#c8dcf0 100%); }
+
+.cfg-btn-apply {
+  background: linear-gradient(180deg, #3a9ae8 0%, #1560b0 100%);
+  border: 1px solid #1458a0;
+  color: #fff;
+  padding: 8px 28px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 1px 3px rgba(0,0,0,.15);
+}
+.cfg-btn-apply:hover { background: linear-gradient(180deg,#55aaee 0%,#2070cc 100%); }
+
+
+/* ════════════════════════════════════════════════════════════════
+   TOOLTIPS DE AYUDA (icono "?" con explicación contextual)
+   ════════════════════════════════════════════════════════════════ */
+.help-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: rgba(106,122,138,.18);
+  color: var(--mu);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: background .15s, color .15s;
+}
+.help-ico:hover { background: var(--ac); color: #fff; }
+
+.help-ico::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  background: linear-gradient(180deg, #2c3e50 0%, #1a2a38 100%);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 8px 10px;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+  z-index: 2000;
+}
+.help-ico::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1a2a38;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+  z-index: 2000;
+}
+.help-ico:hover::after,
+.help-ico:hover::before { opacity: 1; }
+
+/* Variante para tooltips dentro de cabeceras de tabla — se alinean a la izquierda
+   para no salirse de la tabla por el lado derecho */
+.help-ico.left-align::after { left: 0; transform: none; }
+.help-ico.left-align::before { left: 10px; transform: none; }
+
+/* Variante para el sidebar (columna estrecha) — el tooltip aparece a la
+   derecha del icono, alineado por su borde superior, invadiendo el panel
+   central. Evita solapamientos verticales con otras secciones del menú. */
+.help-ico.sidebar-align::after {
+  bottom: auto;
+  top: -6px;
+  left: calc(100% + 8px);
+  transform: none;
+}
+.help-ico.sidebar-align::before {
+  bottom: auto;
+  top: 3px;
+  left: calc(100% + 1px);
+  transform: none;
+  border-top-color: transparent;
+  border-right-color: #1a2a38;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  .layout  { grid-template-columns: 1fr; }
-  .sidebar { border-right:none; border-bottom:1px solid var(--bd); }
-  .up-grid { grid-template-columns: 1fr; }
+  .layout    { grid-template-columns: 1fr; }
+  .sidebar   { border-right:none; border-bottom:1px solid var(--bd); }
+  .up-grid   { grid-template-columns: 1fr; }
+  .cfg-grid  { grid-template-columns: 1fr; }
 }
