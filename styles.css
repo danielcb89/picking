@@ -359,7 +359,7 @@ input:focus {
 
 
 /* ── CONTENIDO ──────────────────────────────────────────────── */
-.content { padding:16px 20px; overflow:auto; background:rgba(255,255,255,.3); }
+.content { padding:8px 20px; overflow:auto; background:rgba(255,255,255,.3); }
 .panel     { display:none; }
 .panel.act { display:block; }
 
@@ -622,6 +622,7 @@ tr:last-child      td { border-bottom:none; }
 
 /* ── Tabs de layout (CENTRAL, PB Auxiliar, P-1 Auxiliar...) ─────── */
 #layoutTabs { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+#layoutTabs:empty { display:none; }
 .layout-tab {
   padding: 4px 14px;
   border-radius: 3px;
@@ -643,7 +644,7 @@ tr:last-child      td { border-bottom:none; }
 }
 
 /* Cabecera del panel mapa */
-.map-hdr   { display:flex; align-items:center; gap:14px; margin-bottom:12px; flex-wrap:wrap; }
+.map-hdr   { display:flex; align-items:center; gap:14px; margin-bottom:4px; flex-wrap:wrap; }
 .map-title { font-size:18px; font-weight:700; color:#1a3a5c; }
 .map-sub   { font-size:11px; color:var(--mu); margin-top:3px; }
 
