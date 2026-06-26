@@ -31,9 +31,47 @@
       <div class="up-card-icon">📊</div>
       <div class="up-card-title">Informe de artículos</div>
       <div class="up-card-sub">
-        Excel exportado del sistema<br>(.xls / .xlsx / .csv)<br><br>
-        Columnas: artcod, descr, antuds, pall, peso, mdq,<br>
-        loc, maxpick, minpick, locaux, maxpickaux, minpickaux, entrega...
+        Excel exportado del sistema&nbsp;·&nbsp;.xls / .xlsx / .csv
+      </div>
+      <div class="up-cols">
+        <div class="up-col-group">
+          <div class="up-col-title">Identificación</div>
+          <div class="up-col-row"><span class="up-col-name">artcod</span><span class="up-col-desc">Código artículo</span></div>
+          <div class="up-col-row"><span class="up-col-name">descr</span><span class="up-col-desc">Descripción</span></div>
+          <div class="up-col-row"><span class="up-col-name">hfb</span><span class="up-col-desc">Familia HFB</span></div>
+          <div class="up-col-row"><span class="up-col-name">fam</span><span class="up-col-desc">Subfamilia</span></div>
+          <div class="up-col-row"><span class="up-col-name">assortment</span><span class="up-col-desc">Surtido (S/NS)</span></div>
+        </div>
+        <div class="up-col-group">
+          <div class="up-col-title">Ventas</div>
+          <div class="up-col-row"><span class="up-col-name">antuds</span><span class="up-col-desc">Uds vendidas/mes</span></div>
+          <div class="up-col-row"><span class="up-col-name">semuds</span><span class="up-col-desc">Uds vendidas/sem</span></div>
+          <div class="up-col-row"><span class="up-col-name">anouds</span><span class="up-col-desc">Uds vendidas/año</span></div>
+          <div class="up-col-row"><span class="up-col-name">startsaledate</span><span class="up-col-desc">Inicio de venta</span></div>
+          <div class="up-col-row"><span class="up-col-name">endsaledate</span><span class="up-col-desc">Fin de venta</span></div>
+        </div>
+        <div class="up-col-group">
+          <div class="up-col-title">Físico</div>
+          <div class="up-col-row"><span class="up-col-name">pall</span><span class="up-col-desc">Uds por pallet</span></div>
+          <div class="up-col-row"><span class="up-col-name">peso</span><span class="up-col-desc">Peso (kg)</span></div>
+          <div class="up-col-row"><span class="up-col-name">vol</span><span class="up-col-desc">Volumen (dm³)</span></div>
+          <div class="up-col-row"><span class="up-col-name">mdq</span><span class="up-col-desc">Mínimo divisible</span></div>
+          <div class="up-col-row"><span class="up-col-name">entrega</span><span class="up-col-desc">Tipo entrega</span></div>
+        </div>
+        <div class="up-col-group">
+          <div class="up-col-title">Ubicación</div>
+          <div class="up-col-row"><span class="up-col-name">loc</span><span class="up-col-desc">Loc. Central</span></div>
+          <div class="up-col-row"><span class="up-col-name">maxpick</span><span class="up-col-desc">Máx. Central</span></div>
+          <div class="up-col-row"><span class="up-col-name">minpick</span><span class="up-col-desc">Mín. Central</span></div>
+          <div class="up-col-row"><span class="up-col-name">locaux</span><span class="up-col-desc">Loc. Auxiliar1</span></div>
+          <div class="up-col-row"><span class="up-col-name">maxpickaux</span><span class="up-col-desc">Máx. Auxiliar1</span></div>
+          <div class="up-col-row"><span class="up-col-name">minpickaux</span><span class="up-col-desc">Mín. Auxiliar1</span></div>
+        </div>
+        <div class="up-col-group">
+          <div class="up-col-title">Stock</div>
+          <div class="up-col-row"><span class="up-col-name">stocktotal</span><span class="up-col-desc">Stock total</span></div>
+          <div class="up-col-row"><span class="up-col-name">pv</span><span class="up-col-desc">Pedido en camino</span></div>
+        </div>
       </div>
       <div class="up-card-status" id="st1"></div>
     </div>
@@ -96,10 +134,7 @@
     <div class="hpills">
       <div class="pill"><span class="lbl">Locs Central</span><span id="hLocsC">—</span></div>
       <div class="pill"><span class="lbl">Locs Aux1</span>   <span id="hLocsA">—</span></div>
-      <div class="pill"><span class="lbl">Artículos</span>   <span id="hArts">—</span></div>
       <div class="pill"><span class="lbl">Con loc</span>     <span id="hConLoc">—</span></div>
-      <div class="pill"><span class="lbl">Pesados</span>     <span id="hHeavy">—</span></div>
-      <div class="pill"><span class="lbl">Sin loc ≥<span id="hRotLabel">20</span>/mes</span><span id="hNoLoc">—</span></div>
     </div>
 
     <button class="hbtnr" onclick="location.reload()">↺ Cambiar tienda</button>
@@ -142,8 +177,17 @@
         <div style="display:flex;flex-direction:column;gap:7px">
 
           <div class="frow">
-            <label>Venta mín (uds/sem)</label>
+            <label id="fVminLabel">Venta mín (uds/mes)</label>
             <input type="number" id="fVmin" value="0" min="0" oninput="filterArts()">
+          </div>
+
+          <div class="frow">
+            <label>Vista de ventas</label>
+            <select id="fVentaMode" onchange="setVentaMode(this.value)">
+              <option value="mes">📅 Mensual</option>
+              <option value="sem">📅 Semanal</option>
+              <option value="ano">📅 Anual</option>
+            </select>
           </div>
 
           <div class="frow">
@@ -182,8 +226,6 @@
             <select id="fVista" onchange="filterArts()">
               <option value="">Normal</option>
               <option value="prio">🔴 Prioritarios sin loc</option>
-              <option value="mm0">⚠️ Max/Min = 0</option>
-              <option value="sinmdq">⚠️ Sin MDQ</option>
             </select>
           </div>
 
@@ -293,74 +335,7 @@
 
           <div class="cfg-grid">
 
-            <!-- 1. Umbral de rotación -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">📦</div>
-              <div class="cfg-card-title">Umbral de rotación</div>
-              <div class="cfg-card-desc">
-                Define a partir de cuántas unidades vendidas al mes un artículo se considera de <strong>alta rotación</strong>.
-                Afecta a: prioridad de artículos sin localización, detección de manipulación pesada,
-                colores en tabla y mapa, y contador "Sin loc" de la cabecera.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="rotacion" data-val="10" onclick="setCfgOpt(this)">10 uds</button>
-                <button class="cfg-opt" data-cfg="rotacion" data-val="15" onclick="setCfgOpt(this)">15 uds</button>
-                <button class="cfg-opt act" data-cfg="rotacion" data-val="20" onclick="setCfgOpt(this)">20 uds</button>
-                <button class="cfg-opt" data-cfg="rotacion" data-val="25" onclick="setCfgOpt(this)">25 uds</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (uds/mes)</label>
-                <input type="number" min="1" max="9999" id="custom-rotacion"
-                  placeholder="ej. 30" oninput="setCfgCustom('rotThreshold', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-rotacion">20</strong> uds/mes</div>
-            </div>
-
-            <!-- 2. Límite manipulación pesada -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">⚖️</div>
-              <div class="cfg-card-title">Límite manipulación pesada</div>
-              <div class="cfg-card-desc">
-                Peso máximo en kg a partir del cual un artículo requiere <strong>manipulación especial</strong>.
-                Los artículos que superen este límite, tengan alta rotación y no tengan posición de suelo
-                aparecerán marcados en naranja en el mapa y en la sección "Revisar localización".
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="pesado" data-val="15" onclick="setCfgOpt(this)">15 kg</button>
-                <button class="cfg-opt act" data-cfg="pesado" data-val="20" onclick="setCfgOpt(this)">20 kg</button>
-                <button class="cfg-opt" data-cfg="pesado" data-val="25" onclick="setCfgOpt(this)">25 kg</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (kg)</label>
-                <input type="number" min="1" max="999" id="custom-pesado"
-                  placeholder="ej. 18" oninput="setCfgCustom('pesoLimit', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-pesado">20</strong> kg</div>
-            </div>
-
-            <!-- 3. Top N menor rotación -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">🟣</div>
-              <div class="cfg-card-title">Top N menor rotación en mapa</div>
-              <div class="cfg-card-desc">
-                Número de localizaciones con <strong>menor venta mensual</strong> que se resaltan en violeta
-                en el mapa, por cada almacén (Central y Auxiliar1) y por tipo (suelo y picking).
-                Útil para identificar artículos candidatos a liberar espacio.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="topN" data-val="3" onclick="setCfgOpt(this)">Top 3</button>
-                <button class="cfg-opt act" data-cfg="topN" data-val="5" onclick="setCfgOpt(this)">Top 5</button>
-                <button class="cfg-opt" data-cfg="topN" data-val="10" onclick="setCfgOpt(this)">Top 10</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (nº localizaciones)</label>
-                <input type="number" min="1" max="50" id="custom-topN"
-                  placeholder="ej. 7" oninput="setCfgCustom('topN', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-topN">5</strong> localizaciones</div>
-            </div>
-
-            <!-- 4. Top N mayor rotación -->
+            <!-- 1. Top N mayor rotación en mapa -->
             <div class="cfg-card">
               <div class="cfg-card-icon">🔴</div>
               <div class="cfg-card-title">Top N mayor rotación en mapa</div>
@@ -382,6 +357,30 @@
               </div>
               <div class="cfg-current">Valor activo: <strong id="disp-topNHigh">5</strong> localizaciones</div>
             </div>
+
+            <!-- 2. Top N menor rotación en mapa -->
+            <div class="cfg-card">
+              <div class="cfg-card-icon">🟣</div>
+              <div class="cfg-card-title">Top N menor rotación en mapa</div>
+              <div class="cfg-card-desc">
+                Número de localizaciones con <strong>menor venta mensual</strong> que se resaltan en violeta
+                en el mapa, por cada almacén (Central y Auxiliar1) y por tipo (suelo y picking).
+                Útil para identificar artículos candidatos a liberar espacio.
+              </div>
+              <div class="cfg-options">
+                <button class="cfg-opt" data-cfg="topN" data-val="3" onclick="setCfgOpt(this)">Top 3</button>
+                <button class="cfg-opt act" data-cfg="topN" data-val="5" onclick="setCfgOpt(this)">Top 5</button>
+                <button class="cfg-opt" data-cfg="topN" data-val="10" onclick="setCfgOpt(this)">Top 10</button>
+              </div>
+              <div class="cfg-custom">
+                <label>Personalizado (nº localizaciones)</label>
+                <input type="number" min="1" max="50" id="custom-topN"
+                  placeholder="ej. 7" oninput="setCfgCustom('topN', this.value)">
+              </div>
+              <div class="cfg-current">Valor activo: <strong id="disp-topN">5</strong> localizaciones</div>
+            </div>
+
+            <!-- 3. Espacio disponible en picking libre -->
             <div class="cfg-card">
               <div class="cfg-card-icon">🟢</div>
               <div class="cfg-card-title">Espacio disponible en picking libre</div>
@@ -399,9 +398,54 @@
               <div class="cfg-custom">
                 <label>Personalizado (%)</label>
                 <input type="number" min="1" max="100" id="custom-espLibre"
-                  placeholder="ej. 60" oninput="setCfgCustom('freeDefault', this.value)">
+                  placeholder="ej. 60" oninput="setCfgCustom('espLibre', this.value)">
               </div>
               <div class="cfg-current">Valor activo: <strong id="disp-espLibre">50</strong>% libre</div>
+            </div>
+
+            <!-- 4. Límite manipulación pesada -->
+            <div class="cfg-card">
+              <div class="cfg-card-icon">⚖️</div>
+              <div class="cfg-card-title">Límite manipulación pesada</div>
+              <div class="cfg-card-desc">
+                Peso máximo en kg a partir del cual un artículo requiere <strong>manipulación especial</strong>.
+                Los artículos que superen este límite, tengan alta rotación y no tengan posición de suelo
+                aparecerán marcados en naranja en el mapa y en la sección "Revisar localización".
+              </div>
+              <div class="cfg-options">
+                <button class="cfg-opt" data-cfg="pesado" data-val="15" onclick="setCfgOpt(this)">15 kg</button>
+                <button class="cfg-opt act" data-cfg="pesado" data-val="20" onclick="setCfgOpt(this)">20 kg</button>
+                <button class="cfg-opt" data-cfg="pesado" data-val="25" onclick="setCfgOpt(this)">25 kg</button>
+              </div>
+              <div class="cfg-custom">
+                <label>Personalizado (kg)</label>
+                <input type="number" min="1" max="999" id="custom-pesado"
+                  placeholder="ej. 18" oninput="setCfgCustom('pesado', this.value)">
+              </div>
+              <div class="cfg-current">Valor activo: <strong id="disp-pesado">20</strong> kg</div>
+            </div>
+
+            <!-- 5. Umbral de rotación artículos pesados -->
+            <div class="cfg-card">
+              <div class="cfg-card-icon">📦</div>
+              <div class="cfg-card-title">Umbral de rotación artículos pesados</div>
+              <div class="cfg-card-desc">
+                Define a partir de cuántas unidades vendidas al mes un artículo se considera de <strong>alta rotación</strong>.
+                Afecta a: prioridad de artículos sin localización, detección de manipulación pesada,
+                colores en tabla y mapa, y contador "Sin loc" de la cabecera.
+              </div>
+              <div class="cfg-options">
+                <button class="cfg-opt" data-cfg="rotacion" data-val="10" onclick="setCfgOpt(this)">10 uds</button>
+                <button class="cfg-opt" data-cfg="rotacion" data-val="15" onclick="setCfgOpt(this)">15 uds</button>
+                <button class="cfg-opt act" data-cfg="rotacion" data-val="20" onclick="setCfgOpt(this)">20 uds</button>
+                <button class="cfg-opt" data-cfg="rotacion" data-val="25" onclick="setCfgOpt(this)">25 uds</button>
+              </div>
+              <div class="cfg-custom">
+                <label>Personalizado (uds/mes)</label>
+                <input type="number" min="1" max="9999" id="custom-rotacion"
+                  placeholder="ej. 30" oninput="setCfgCustom('rotacion', this.value)">
+              </div>
+              <div class="cfg-current">Valor activo: <strong id="disp-rotacion">20</strong> uds/mes</div>
             </div>
 
           </div><!-- /cfg-grid -->
@@ -415,33 +459,39 @@
       </div>
   </div><!-- /layout -->
 
-  <!-- Leyenda flotante — esquina inferior izquierda -->
+  <!-- Leyenda flotante — esquina inferior izquierda (interactiva) -->
   <div class="map-legend-float" id="mapLegendFloat">
-    <div class="map-legend-title">Leyenda</div>
-    <div class="leg"><div class="ldot cs-o"></div>Ocupado</div>
-    <div class="leg"><div class="ldot cs-f"></div>Libre</div>
-    <div class="leg"><div class="ldot cs-u"></div>Subutilizado</div>
-    <div class="leg"><div class="ldot cp-rev"></div>🟠 Manipulación pesada
-      <span class="help-ico sidebar-align" data-tip="Artículos de peso elevado y alta rotación que no tienen posición de suelo asignada en ningún almacén — obligan a manipulación manual repetida.">?</span>
+    <div class="map-legend-title">Leyenda · filtros de mapa</div>
+    <div class="leg leg-static">
+      <div class="ldot cs-o"></div><span class="leg-label">Ocupado</span>
     </div>
-    <div class="leg"><div class="ldot x-low"></div>🟣 Top 5 menor rotación
-      <span class="help-ico sidebar-align" data-tip="Las 5 localizaciones con menor venta mensual de cada almacén, en suelo y en picking por separado. Candidatas a liberar espacio.">?</span>
+    <div class="leg" data-layer="libre" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot cs-f"></div><span class="leg-label">Libre</span>
     </div>
-    <div class="leg"><div class="ldot x-high"></div>🔴 Top 5 mayor rotación
-      <span class="help-ico sidebar-align" data-tip="Las 5 localizaciones con mayor venta mensual de cada almacén, en suelo y en picking por separado. Artículos críticos que deben tener la mejor ubicación posible.">?</span>
+    <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
+    <div class="leg" data-layer="rev" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot cp-rev"></div><span class="leg-label">🟠 Manipulación pesada</span>
     </div>
-    <div class="leg"><div class="ldot x-pallet"></div>🟦 Pallet libre en suelo
-      <span class="help-ico sidebar-align" data-tip="Localizaciones de suelo con capacidad para 3 pallets donde hay menos de 3 asignados. Calculado código por código: máximo de reposición ÷ unidades por pallet.">?</span>
+    <div class="leg" data-layer="low" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-low"></div><span class="leg-label">🟣 Top menor rotación</span>
     </div>
-    <div class="leg"><div class="ldot x-ns"></div>🔘 Fuera de surtido (NS)
-      <span class="help-ico sidebar-align" data-tip="Artículos marcados como NS (fuera de surtido) que aún conservan localización asignada — pendientes de liberar antes de su baja definitiva.">?</span>
+    <div class="leg" data-layer="high" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-high"></div><span class="leg-label">🔴 Top mayor rotación</span>
     </div>
-    <div class="leg"><div class="ldot layout-special-dot"></div>Zona especial</div>
+    <div class="leg" data-layer="pallet" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-pallet"></div><span class="leg-label">🟦 Pallet libre en suelo</span>
+    </div>
+    <div class="leg" data-layer="ns" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-ns"></div><span class="leg-label">🔘 Fuera de surtido (NS)</span>
+    </div>
+    <div class="leg" style="cursor:default;opacity:.6;pointer-events:none">
+      <div class="leg-check" style="visibility:hidden"></div><div class="ldot layout-special-dot"></div><span class="leg-label">Zona especial</span>
+    </div>
   </div>
 
   <!-- Crédito de autor — esquina inferior derecha -->
   <div class="app-credit">
-    Gestor Picking IKEA <span class="app-version">v0.21</span>
+    Gestor Picking IKEA <span class="app-version">v0.48</span>
     <span class="app-by">by Daniel Coso</span>
   </div>
 
