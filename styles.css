@@ -602,6 +602,9 @@ tr:last-child      td { border-bottom:none; }
 /* Top 5 menor rotación — violeta */
 .x-low { background:rgba(142,68,173,.5); border-color:rgba(142,68,173,.8); }
 
+/* Top 5 mayor rotación — rojo intenso */
+.x-high { background:rgba(192,57,43,.5); border-color:rgba(192,57,43,.85); }
+
 /* Pallet libre en suelo (capacidad fija 3/suelo) — teal */
 .x-pallet { background:rgba(0,137,123,.45); border-color:rgba(0,137,123,.75); }
 
@@ -972,7 +975,7 @@ tr:last-child      td { border-bottom:none; }
    ════════════════════════════════════════════════════════════════ */
 
 .cfg-wrap {
-  max-width: 860px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 4px 0 40px;
 }
@@ -985,7 +988,7 @@ tr:last-child      td { border-bottom:none; }
 /* Grid de tarjetas — 2 columnas en escritorio */
 .cfg-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1046,8 +1049,8 @@ tr:last-child      td { border-bottom:none; }
 /* Input personalizado */
 .cfg-custom {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 5px;
 }
 .cfg-custom label {
   font-size: 10px;
@@ -1058,7 +1061,7 @@ tr:last-child      td { border-bottom:none; }
   white-space: nowrap;
 }
 .cfg-custom input {
-  width: 90px !important;
+  width: 100% !important;
   padding: 5px 8px !important;
   font-size: 12px !important;
 }

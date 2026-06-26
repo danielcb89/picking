@@ -360,7 +360,28 @@
               <div class="cfg-current">Valor activo: <strong id="disp-topN">5</strong> localizaciones</div>
             </div>
 
-            <!-- 4. Espacio disponible en picking libre -->
+            <!-- 4. Top N mayor rotación -->
+            <div class="cfg-card">
+              <div class="cfg-card-icon">🔴</div>
+              <div class="cfg-card-title">Top N mayor rotación en mapa</div>
+              <div class="cfg-card-desc">
+                Número de localizaciones con <strong>mayor venta mensual</strong> que se resaltan en rojo
+                en el mapa, por cada almacén (Central y Auxiliar1) y por tipo (suelo y picking).
+                Útil para identificar los artículos más críticos y asegurarse de que tienen
+                la mejor ubicación posible.
+              </div>
+              <div class="cfg-options">
+                <button class="cfg-opt" data-cfg="topNHigh" data-val="3" onclick="setCfgOpt(this)">Top 3</button>
+                <button class="cfg-opt act" data-cfg="topNHigh" data-val="5" onclick="setCfgOpt(this)">Top 5</button>
+                <button class="cfg-opt" data-cfg="topNHigh" data-val="10" onclick="setCfgOpt(this)">Top 10</button>
+              </div>
+              <div class="cfg-custom">
+                <label>Personalizado (nº localizaciones)</label>
+                <input type="number" min="1" max="50" id="custom-topNHigh"
+                  placeholder="ej. 7" oninput="setCfgCustom('topNHigh', this.value)">
+              </div>
+              <div class="cfg-current">Valor activo: <strong id="disp-topNHigh">5</strong> localizaciones</div>
+            </div>
             <div class="cfg-card">
               <div class="cfg-card-icon">🟢</div>
               <div class="cfg-card-title">Espacio disponible en picking libre</div>
@@ -405,6 +426,9 @@
     </div>
     <div class="leg"><div class="ldot x-low"></div>🟣 Top 5 menor rotación
       <span class="help-ico sidebar-align" data-tip="Las 5 localizaciones con menor venta mensual de cada almacén, en suelo y en picking por separado. Candidatas a liberar espacio.">?</span>
+    </div>
+    <div class="leg"><div class="ldot x-high"></div>🔴 Top 5 mayor rotación
+      <span class="help-ico sidebar-align" data-tip="Las 5 localizaciones con mayor venta mensual de cada almacén, en suelo y en picking por separado. Artículos críticos que deben tener la mejor ubicación posible.">?</span>
     </div>
     <div class="leg"><div class="ldot x-pallet"></div>🟦 Pallet libre en suelo
       <span class="help-ico sidebar-align" data-tip="Localizaciones de suelo con capacidad para 3 pallets donde hay menos de 3 asignados. Calculado código por código: máximo de reposición ÷ unidades por pallet.">?</span>
