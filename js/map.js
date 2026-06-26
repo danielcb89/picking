@@ -83,6 +83,11 @@ function cellClass(p, e, alm) {
   const allCodes = allLocs.map(l => l.c);
   if (allCodes.some(c => lowSuelo.has(c) || lowPick.has(c))) return 'x-low';
 
+  // ¿Está en top N alta rotación?
+  const highSuelo = alm === 'AUXILIAR1' ? HIGH_ROT.asuelo : HIGH_ROT.csuelo;
+  const highPick  = alm === 'AUXILIAR1' ? HIGH_ROT.apick  : HIGH_ROT.cpick;
+  if (allCodes.some(c => highSuelo.has(c) || highPick.has(c))) return 'x-high';
+
   // ¿Tiene algún suelo con pallet libre (capacidad fija 3, hueco aunque tenga artículos)?
   const sueloCodes = (est.s || []).map(l => l.c);
   if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
@@ -290,6 +295,12 @@ function showTT(e, el) {
     const isLow  = lowSet && lowSet.has(posEntry.c);
     const minS   = isLow && arts.length ? Math.min(...arts.map(a => a.s)) : null;
 
+    const highSet = isAux
+      ? (isFloor ? HIGH_ROT.asuelo : HIGH_ROT.apick)
+      : (isFloor ? HIGH_ROT.csuelo : HIGH_ROT.cpick);
+    const isHigh  = highSet && highSet.has(posEntry.c);
+    const maxS    = isHigh && arts.length ? Math.max(...arts.map(a => a.s)) : null;
+
     h += `<div class="tt-row-pos">
       <div class="tt-row-lbl${isFloor ? ' suelo' : ''}">
         <span>${posLabel}</span>
@@ -313,13 +324,14 @@ function showTT(e, el) {
       arts.forEach(a => {
         const revisar = a.pe > CFG.pesado && a.s >= CFG.rotacion && !isFloor;
         const lowArt  = isLow && a.s === minS;
+        const highArt = isHigh && a.s === maxS;
         const nsArt   = a.a === 'NS';
         h += `<div class="tt-row-art">
           <span class="tt-row-code">${a.i}</span>
           <span class="tt-row-desc">${firstWords(a.d, 4)}</span>
           <span class="tt-row-stat" style="color:${a.s >= CFG.rotacion ? 'var(--gn)' : a.s < 0 ? 'var(--rd)' : 'var(--mu)'}">${a.s}</span>
           <span class="tt-row-stat" style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--mu)'}">${a.pe > 0 ? a.pe + 'kg' : '—'}</span>
-          <span class="tt-row-warn">${revisar ? '🟠' : ''}${lowArt ? '🟣' : ''}${nsArt ? '🔘' : ''}</span>
+          <span class="tt-row-warn">${revisar ? '🟠' : ''}${lowArt ? '🟣' : ''}${highArt ? '🔴' : ''}${nsArt ? '🔘' : ''}</span>
         </div>`;
       });
     }

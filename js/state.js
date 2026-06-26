@@ -14,7 +14,10 @@ let STATS  = {};   // Resumen de contadores para la cabecera
 let LOC_DATA = {}; // Lookup rápido: código_loc -> {cap, lt, arts, almacen}
 
 // ── Top 5 menor rotación por almacén/tipo (para resaltar en el mapa) ──
-let LOW_ROT = { csuelo: new Set(), cpick: new Set(), asuelo: new Set(), apick: new Set() };
+let LOW_ROT  = { csuelo: new Set(), cpick: new Set(), asuelo: new Set(), apick: new Set() };
+
+// ── Top 5 mayor rotación por almacén/tipo (para resaltar en el mapa) ──
+let HIGH_ROT = { csuelo: new Set(), cpick: new Set(), asuelo: new Set(), apick: new Set() };
 
 // ── Layouts de planta (leídos desde pestañas del Excel de ubicaciones) ──
 let LAYOUTS       = []; // Array de { nombre, grid } — una entrada por pestaña de layout
@@ -25,6 +28,7 @@ const CFG_DEFAULTS = {
   rotacion:    20,   // uds/mes — umbral de alta rotación
   pesado:      20,   // kg — límite para considerar manipulación pesada
   topN:        5,    // N — top menor rotación por almacén
+  topNHigh:    5,    // N — top mayor rotación por almacén
   espLibre:    50,   // % libre mínimo para Picking libre
 };
 let CFG = { ...CFG_DEFAULTS };

@@ -129,7 +129,7 @@ function gotoView(v) {
 
 function renderConfigPanel() {
   // Sincronizar botones activos y displays con CFG actual
-  ['rotacion','pesado','topN','espLibre'].forEach(key => {
+  ['rotacion','pesado','topN','topNHigh','espLibre'].forEach(key => {
     const val = CFG[key];
     // Actualizar display
     const disp = document.getElementById('disp-' + key);
@@ -162,7 +162,7 @@ function setCfgOpt(btn) {
 
 function setCfgCustom(key, raw) {
   const val = parseInt(raw);
-  if (!val || val <= 0) return;
+  if (isNaN(val) || val < 0) return;
   CFG[key] = val;
   // Desmarcar todos los botones de este grupo
   document.querySelectorAll(`.cfg-opt[data-cfg="${key}"]`).forEach(b => b.classList.remove('act'));

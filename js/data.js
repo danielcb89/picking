@@ -390,7 +390,7 @@ function calcAlerts() {
     LIBRE_ALL.filter(l => l.lt === 'suelo' && l.palletsFree > 0).map(l => l.c)
   );
 
-  // LOW_ROT: top 5 localizaciones de menor venta/sem, por almacén y tipo (suelo/picking)
+  // LOW_ROT: top N localizaciones de menor venta/sem, por almacén y tipo (suelo/picking)
   function top5LowSales(locsArr, lt) {
     return locsArr
       .filter(l => l.lt === lt && l.arts.length)
@@ -404,6 +404,22 @@ function calcAlerts() {
     cpick:  new Set(top5LowSales(LOCS_C, 'picking')),
     asuelo: new Set(top5LowSales(LOCS_A, 'suelo')),
     apick:  new Set(top5LowSales(LOCS_A, 'picking')),
+  };
+
+  // HIGH_ROT: top N localizaciones de mayor venta/sem, por almacén y tipo (suelo/picking)
+  function top5HighSales(locsArr, lt) {
+    return locsArr
+      .filter(l => l.lt === lt && l.arts.length)
+      .map(l => ({ c: l.c, s: Math.max(...l.arts.map(a => a.s)) }))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, CFG.topNHigh)
+      .map(l => l.c);
+  }
+  HIGH_ROT = {
+    csuelo: new Set(top5HighSales(LOCS_C, 'suelo')),
+    cpick:  new Set(top5HighSales(LOCS_C, 'picking')),
+    asuelo: new Set(top5HighSales(LOCS_A, 'suelo')),
+    apick:  new Set(top5HighSales(LOCS_A, 'picking')),
   };
 
   STATS = {
