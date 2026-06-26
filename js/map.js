@@ -176,7 +176,7 @@ function renderLayoutMap(layoutIdx) {
     grid-template-columns:repeat(${nCols},${CELL_W}px);
     grid-template-rows:repeat(${nRows},${CELL_H}px);
     gap:${GAP}px;
-    padding:10px;
+    padding:4px;
     overflow:visible;
   ">`;
 

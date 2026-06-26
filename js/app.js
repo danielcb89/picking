@@ -72,8 +72,10 @@ function showApp() {
       `<button class="layout-tab${i === 0 ? ' act' : ''}"
          onclick="switchLayout(${i})">${l.nombre}</button>`
     ).join('');
+    tabsEl.style.display = '';
   } else {
     tabsEl.innerHTML = '';
+    tabsEl.style.display = 'none';
   }
 
   // Aplicar configuración inicial
