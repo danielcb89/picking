@@ -166,7 +166,9 @@ function processArticles(rows) {
     artcod:     findCol(s, ['artcod','codigo','cod','article','item']),
     descr:      findCol(s, ['descr','description','descripcion','desc','nombre']),
     assortment: findCol(s, ['assortment','surtido']),
-    semuds:     findCol(s, ['antuds','ant_uds','semuds','sem_uds','ventas_sem','ventas_mes']),
+    semuds:     findCol(s, ['antuds','ant_uds','ventas_mes']),
+    semuds_sem: findCol(s, ['semuds','sem_uds','ventas_sem']),
+    anouds:     findCol(s, ['anouds','ano_uds','ventas_ano','ventas_año']),
     pall:       findCol(s, ['pall','pallet']),
     mdq:        findCol(s, ['mdq','min_div']),
     peso:       findCol(s, ['peso','weight','kg']),
@@ -182,7 +184,9 @@ function processArticles(rows) {
     hfb:        findCol(s, ['hfb']),
     fam:        findCol(s, ['fam','familia']),
     socktotal:  findCol(s, ['socktotal','stocktotal','stock_total','sock_total']),
+    pv:         findCol(s, ['pv','pendiente','pending','qty_pending','qty_incoming']),
     endsale:    findCol(s, ['endsaledate','end_sale_date','end sale date','fecha fin venta','fechafinventa']),
+    startsale:  findCol(s, ['startsaledate','start_sale_date','start sale date','fecha inicio venta','fechainicioventa']),
   };
   if (!C.artcod || !C.descr)
     throw new Error(`No se encontró artcod/descr. Columnas: ${Object.keys(s).join(', ')}`);
@@ -240,11 +244,17 @@ function processArticles(rows) {
       i:   safeStr(r[C.artcod]),
       d:   String(r[C.descr] || '').trim().substring(0, 55),
       a:   safeStr(r[C.assortment] || ''),
-      s:   semuds, pl: pall, md: mdq, pe: peso, vo: safeNum(r[C.vol]),
+      s:   semuds,
+      sw:  C.semuds_sem ? safeNum(r[C.semuds_sem]) : null,
+      sa:  C.anouds     ? safeNum(r[C.anouds])     : null,
+      pl: pall, md: mdq, pe: peso, vo: safeNum(r[C.vol]),
       lc:  loc,    mx:  safeNum(r[C.maxpick]),    mn:  safeNum(r[C.minpick]),
       la:  locaux, mxa: safeNum(r[C.maxpickaux]), mna: safeNum(r[C.minpickaux]),
       wc:  pall <= 0 ? '?' : pall <= 30 ? 'Voluminoso' : pall <= 200 ? 'Mediano' : 'Pequeño',
-      es:  C.endsale ? parseExcelDate(r[C.endsale]) : null,
+      es:  C.endsale   ? parseExcelDate(r[C.endsale])   : null,
+      ss:  C.startsale ? parseExcelDate(r[C.startsale]) : null,
+      st:  C.socktotal ? safeNum(r[C.socktotal]) : 0,
+      pv:  C.pv        ? safeNum(r[C.pv])        : 0,
       pr:  calcPri(hasAnyLoc, semuds, pall),
     };
   }).filter(a => a && a.i);
@@ -372,10 +382,12 @@ function calcAlerts() {
     if (a.lc) BYE.push({
       i: a.i, d: a.d, loc: a.lc, almacen: 'CENTRAL',
       mx: a.mx, mn: a.mn, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+      st: a.st, pv: a.pv,
     });
     if (a.la) BYE.push({
       i: a.i, d: a.d, loc: a.la, almacen: 'AUXILIAR1',
       mx: a.mxa, mn: a.mna, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+      st: a.st, pv: a.pv,
     });
   });
   // NS_LOCS: lookup rápido de códigos de localización con algún artículo NS (para color en mapa)

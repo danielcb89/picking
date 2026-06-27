@@ -50,6 +50,8 @@ function sortTable(name, key) {
     renderArtsTable();
   } else if (name === 'pesados') {
     renderPesadosTable();
+  } else if (name === 'bye') {
+    renderByeTable();
   } else {
     renderLibreTable();
   }
@@ -57,6 +59,31 @@ function sortTable(name, key) {
 
 
 // ── ARTÍCULOS ────────────────────────────────────────────────────
+
+// Modo de visualización de ventas: 'mes' | 'sem' | 'ano'
+let ventaMode = 'mes';
+
+// Devuelve el valor de ventas del artículo según el modo activo
+function ventaVal(a) {
+  if (ventaMode === 'sem') return a.sw ?? a.s;   // semuds (campo sw)
+  if (ventaMode === 'ano') return a.sa ?? a.s;   // anouds (campo sa)
+  return a.s;                                     // antuds / mes (por defecto)
+}
+
+// Labels según modo
+const VENTA_LABELS = { mes: 'Vta/mes', sem: 'Vta/sem', ano: 'Vta/año' };
+const VMIN_LABELS  = { mes: 'Venta mín (uds/mes)', sem: 'Venta mín (uds/sem)', ano: 'Venta mín (uds/año)' };
+
+function setVentaMode(mode) {
+  ventaMode = mode;
+  // Actualizar label del filtro de venta mínima
+  const lbl = document.getElementById('fVminLabel');
+  if (lbl) lbl.textContent = VMIN_LABELS[mode] || VMIN_LABELS.mes;
+  // Resetear ordenación a ventas descendente
+  sortK = 's'; sortD = 'd';
+  sortStates.arts = { k: 's', d: 'd' };
+  filterArts();
+}
 
 function filterArts() {
   const q     = (document.getElementById('sbox')   || { value: '' }).value.toLowerCase();
@@ -67,7 +94,7 @@ function filterArts() {
   const fv    = (document.getElementById('fVista') || { value: '' }).value;
 
   filteredArts = ARTS.filter(a => {
-    if (a.s < vmin)                                    return false;
+    if (ventaVal(a) < vmin)                            return false;
     if (fpe   && a.wc !== fpe)                         return false;
     if (floc === 'con'     && !a.lc && !a.la)          return false;
     if (floc === 'sin'     && (a.lc || a.la))          return false;
@@ -76,8 +103,6 @@ function filterArts() {
     if (floc === 'ambos'   && !(a.lc && a.la))         return false;
     if (fsurt  && a.a !== fsurt)                       return false;
     if (fv === 'prio'   && !['CRÍTICA','ALTA'].includes(a.pr)) return false;
-    if (fv === 'mm0'    && !(a.lc && a.mx === 0) && !(a.la && a.mxa === 0)) return false;
-    if (fv === 'sinmdq' && a.md > 0)                   return false;
     if (q && !a.i.toLowerCase().includes(q)
           && !a.d.toLowerCase().includes(q)
           && !(a.lc || '').toLowerCase().includes(q)
@@ -101,18 +126,36 @@ function renderArtsTable() {
 
   document.getElementById('rowcnt').textContent = total.toLocaleString() + ' artículos';
 
+  const fmtDate = d => d ? d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
+
   const rows = slice.map(a => {
+    const vta = ventaVal(a);
     const locC = a.lc
       ? `<span style="color:var(--b2)">${a.lc}</span> <span style="font-size:9px;color:var(--mu)">${a.mx || '—'}/${a.mn || '—'}</span>`
       : `<span style="color:var(--mu);font-style:italic">—</span>`;
     const locA = a.la
       ? `<span style="color:var(--aux-lbl)">${a.la}</span> <span style="font-size:9px;color:var(--mu)">${a.mxa || '—'}/${a.mna || '—'}</span>`
       : `<span style="color:var(--mu);font-style:italic">—</span>`;
+
+    // Inicio venta — destacar novedades (< 90 días) sin localización
+    const hoy     = new Date();
+    const esNuevo = a.ss && !a.lc && !a.la && (hoy - a.ss) < 90 * 86400000;
+    const ssStr   = a.ss
+      ? `<span style="color:${esNuevo ? 'var(--gn)' : 'var(--tx)'};font-weight:${esNuevo ? '700' : '400'}">${fmtDate(a.ss)}${esNuevo ? ' 🆕' : ''}</span>`
+      : `<span style="color:var(--mu)">—</span>`;
+
+    // Fin venta — destacar próximos a caducar (< 60 días) en naranja
+    const proxFin  = a.es && (a.es - hoy) < 60 * 86400000 && a.es > hoy;
+    const caducado = a.es && a.es < hoy;
+    const esStr    = a.es
+      ? `<span style="color:${caducado ? 'var(--mu)' : proxFin ? 'var(--or)' : 'var(--tx)'}">${fmtDate(a.es)}</span>`
+      : `<span style="color:var(--mu)">—</span>`;
+
     return `<tr>
       <td style="color:var(--b2);font-weight:600">${a.i}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${a.d}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${a.d}</td>
       <td><span class="badge ${a.a === 'S' ? 'b-gn' : a.a === 'NS' ? 'b-gy' : 'b-bl'}">${a.a || '—'}</span></td>
-      <td style="font-weight:700;color:${a.s >= CFG.rotacion ? 'var(--gn)' : a.s > 0 ? 'var(--tx)' : 'var(--mu)'}">${a.s}</td>
+      <td style="font-weight:700;color:${vta >= CFG.rotacion ? 'var(--gn)' : vta > 0 ? 'var(--tx)' : 'var(--mu)'}">${vta}</td>
       <td>${a.pl}</td>
       <td><span class="badge ${wcls(a.wc)}">${a.wc}</span></td>
       <td style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${a.pe > 0 ? a.pe + ' kg' : '—'}</td>
@@ -120,17 +163,20 @@ function renderArtsTable() {
       <td>${a.md || '<span style="color:var(--rd)">⚠ 0</span>'}</td>
       <td>${locC}</td>
       <td>${locA}</td>
-      <td><span class="badge ${pcls(a.pr)}">${a.pr}</span></td>
+      <td>${ssStr}</td>
+      <td>${esStr}</td>
     </tr>`;
   }).join('');
 
+  const vtaLabel = VENTA_LABELS[ventaMode] || 'Vta/mes';
   document.getElementById('artsTbl').innerHTML = `<table>
     <thead><tr>
-      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts','s','Vta/mes')}
+      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts','s', vtaLabel)}
       ${th('arts','pl','Pallet')}${th('arts','wc','Tipo')}${th('arts','pe','Peso')}${th('arts','vo','Vol')}${th('arts','md','MDQ')}
-      ${th('arts','lc','Loc Central (max/min)')}${th('arts','la','Loc Aux1 (max/min)')}${th('arts','pr','Prioridad')}
+      ${th('arts','lc','Loc Central (max/min)')}${th('arts','la','Loc Aux1 (max/min)')}
+      ${th('arts','ss','Inicio venta')}${th('arts','es','Fin venta')}
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;color:var(--mu);padding:28px">Sin resultados</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="13" style="text-align:center;color:var(--mu);padding:28px">Sin resultados</td></tr>'}</tbody>
   </table>`;
 
   document.getElementById('pagInfo').textContent = `Pág. ${curPage}/${pages} · ${total.toLocaleString()}`;
@@ -155,10 +201,16 @@ function renderArtsTable() {
 }
 
 function resetFilters() {
-  ['fVmin', 'fPeso', 'fLoc2', 'fSurt', 'fVista', 'sbox'].forEach(id => {
+  ['fVmin', 'fPeso', 'fLoc2', 'fSurt', 'fVista', 'sbox', 'fVentaMode'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = id === 'fVmin' ? '0' : '';
+    if (!el) return;
+    if (id === 'fVmin') el.value = '0';
+    else if (id === 'fVentaMode') el.value = 'mes';
+    else el.value = '';
   });
+  ventaMode = 'mes';
+  const lbl = document.getElementById('fVminLabel');
+  if (lbl) lbl.textContent = VMIN_LABELS.mes;
   filteredArts = [...ARTS];
   sortArtsData();
   curPage = 1;
@@ -166,10 +218,12 @@ function resetFilters() {
 }
 
 function exportArts() {
-  const hdr  = ['Código','Descripción','Surtido','Vta/mes','Pallet','Tipo peso','Peso kg','Vol dm3',
-                 'MDQ','Loc Central','Max Central','Min Central','Loc Aux1','Max Aux1','Min Aux1','Prioridad'];
-  const rows = filteredArts.map(a => [a.i, a.d, a.a, a.s, a.pl, a.wc, a.pe, a.vo, a.md,
-                                       a.lc, a.mx, a.mn, a.la, a.mxa, a.mna, a.pr]);
+  const fmtDate = d => d ? d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+  const vtaLabel = VENTA_LABELS[ventaMode] || 'Vta/mes';
+  const hdr  = ['Código','Descripción','Surtido', vtaLabel,'Pallet','Tipo peso','Peso kg','Vol dm3',
+                 'MDQ','Loc Central','Max Central','Min Central','Loc Aux1','Max Aux1','Min Aux1','Inicio venta','Fin venta'];
+  const rows = filteredArts.map(a => [a.i, a.d, a.a, ventaVal(a), a.pl, a.wc, a.pe, a.vo, a.md,
+                                       a.lc, a.mx, a.mn, a.la, a.mxa, a.mna, fmtDate(a.ss), fmtDate(a.es)]);
   csvDownload('wms_articulos', hdr, rows);
 }
 
@@ -447,8 +501,10 @@ function setByeCardFilter(key) {
 }
 
 function renderBye() {
-  const bc = BYE.filter(b => b.almacen === 'CENTRAL').length;
-  const ba = BYE.filter(b => b.almacen === 'AUXILIAR1').length;
+  const bc       = BYE.filter(b => b.almacen === 'CENTRAL').length;
+  const ba       = BYE.filter(b => b.almacen === 'AUXILIAR1').length;
+  const conStock = BYE.filter(b => (b.st > 0 || b.pv > 0)).length;
+  const sinStock = BYE.filter(b => (b.st <= 0 && b.pv <= 0)).length;
 
   const cardAct = key => byeCardFilter === key ? ' act-card' : '';
 
@@ -467,6 +523,16 @@ function renderBye() {
       <div class="clbl">Auxiliar1</div>
       <div class="cval" style="color:var(--aux-lbl)">${ba}</div>
       <div class="csub">localizaciones</div>
+    </div>
+    <div class="card card-click${cardAct('con-stock')}" data-key="con-stock" onclick="setByeCardFilter('con-stock')">
+      <div class="clbl">📦 Con stock o PV</div>
+      <div class="cval" style="color:var(--or)">${conStock}</div>
+      <div class="csub">mantener ubicación</div>
+    </div>
+    <div class="card card-click${cardAct('sin-stock')}" data-key="sin-stock" onclick="setByeCardFilter('sin-stock')">
+      <div class="clbl">⬜ Sin stock ni PV</div>
+      <div class="cval" style="color:var(--gn)">${sinStock}</div>
+      <div class="csub">candidatos a liberar</div>
     </div>`;
 
   if (!document.getElementById('byeSearchInput')) {
@@ -483,8 +549,10 @@ function renderBye() {
 
 function renderByeTable() {
   let base = BYE;
-  if (byeCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
-  if (byeCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+  if (byeCardFilter === 'central')   base = base.filter(b => b.almacen === 'CENTRAL');
+  if (byeCardFilter === 'aux')       base = base.filter(b => b.almacen === 'AUXILIAR1');
+  if (byeCardFilter === 'con-stock') base = base.filter(b => b.st > 0 || b.pv > 0);
+  if (byeCardFilter === 'sin-stock') base = base.filter(b => b.st <= 0 && b.pv <= 0);
 
   const filtered = byeSearch
     ? base.filter(b => b.i.toLowerCase().includes(byeSearch)
@@ -497,26 +565,35 @@ function renderByeTable() {
 
   const sorted = sortArrBy(filtered, sortStates.bye.k, sortStates.bye.d);
 
-  const rows = sorted.map(b => `<tr>
+  const rows = sorted.map(b => {
+    const tieneStock = b.st > 0 || b.pv > 0;
+    return `<tr>
     <td style="color:${b.almacen === 'AUXILIAR1' ? 'var(--aux-lbl)' : 'var(--b2)'};font-weight:600">${b.loc}</td>
     <td><span class="badge ${b.almacen === 'AUXILIAR1' ? 'b-pu' : 'b-bl'}">${b.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central'}</span></td>
     <td>${b.i}</td>
-    <td style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${b.d}</td>
+    <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">${b.d}</td>
     <td>${b.mx ?? '—'}</td>
     <td>${b.mn ?? '—'}</td>
     <td style="color:${b.s >= CFG.rotacion ? 'var(--gn)' : 'var(--tx)'}">${b.s}</td>
     <td style="color:${b.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${b.pe > 0 ? b.pe + ' kg' : '—'}</td>
-    <td>${b.md || '<span style="color:var(--rd)">⚠ 0</span>'}</td>
+    <td style="font-weight:600;color:${b.st > 0 ? 'var(--b2)' : 'var(--mu)'}">${b.st > 0 ? b.st.toLocaleString() : '—'}</td>
+    <td style="font-weight:600;color:${b.pv > 0 ? 'var(--or)' : 'var(--mu)'}">${b.pv > 0 ? b.pv.toLocaleString() : '—'}</td>
     <td style="font-weight:600;color:${b.endsale ? 'var(--or)' : 'var(--mu)'}">${fmtDate(b.endsale)}</td>
-  </tr>`).join('');
+    <td>${tieneStock
+      ? '<span class="badge b-or">Mantener</span>'
+      : '<span class="badge b-gy">Liberar</span>'}</td>
+  </tr>`;
+  }).join('');
 
   document.getElementById('byeTbl').innerHTML = `<table>
     <thead><tr>
       ${th('bye','loc','Localización')}${th('bye','almacen','Almacén')}${th('bye','i','Artículo')}
       ${th('bye','d','Descripción')}${th('bye','mx','Max')}${th('bye','mn','Min')}
-      ${th('bye','s','Vta/mes')}${th('bye','pe','Peso')}${th('bye','md','MDQ')}${th('bye','endsale','Fin venta')}
+      ${th('bye','s','Vta/mes')}${th('bye','pe','Peso')}
+      ${th('bye','st','Stock')}${th('bye','pv','PV')}
+      ${th('bye','endsale','Fin venta')}<th>Acción</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="10" style="text-align:center;color:var(--gn);padding:28px">✓ Sin artículos NS con localización asignada</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;color:var(--gn);padding:28px">✓ Sin artículos NS con localización asignada</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -569,11 +646,13 @@ function exportLibre() {
 
 function exportBye() {
   let base = BYE;
-  if (byeCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
-  if (byeCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+  if (byeCardFilter === 'central')   base = base.filter(b => b.almacen === 'CENTRAL');
+  if (byeCardFilter === 'aux')       base = base.filter(b => b.almacen === 'AUXILIAR1');
+  if (byeCardFilter === 'con-stock') base = base.filter(b => b.st > 0 || b.pv > 0);
+  if (byeCardFilter === 'sin-stock') base = base.filter(b => b.st <= 0 && b.pv <= 0);
 
-  const hdr  = ['Localización','Almacén','Artículo','Descripción','Max','Min','Vta/mes','Peso kg','MDQ','Fin venta'];
+  const hdr  = ['Localización','Almacén','Artículo','Descripción','Max','Min','Vta/mes','Peso kg','Stock','PV','Fin venta'];
   const rows = sortArrBy(base, sortStates.bye.k, sortStates.bye.d)
-    .map(b => [b.loc, b.almacen, b.i, b.d, b.mx, b.mn, b.s, b.pe, b.md, fmtDate(b.endsale)]);
+    .map(b => [b.loc, b.almacen, b.i, b.d, b.mx, b.mn, b.s, b.pe, b.st, b.pv, fmtDate(b.endsale)]);
   csvDownload('wms_byebye', hdr, rows);
 }

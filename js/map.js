@@ -4,6 +4,28 @@
 // ════════════════════════════════════════════════════════════════
 
 
+// ── CAPAS DE LEYENDA ACTIVAS ─────────────────────────────────────
+// Cada clave corresponde a data-layer en el HTML de la leyenda.
+// true = visible en el mapa, false = oculto (cae a color base).
+const LEGEND_LAYERS = {
+  libre:   true,
+  rev:     true,
+  low:     true,
+  high:    true,
+  pallet:  true,
+  ns:      true,
+};
+
+function toggleLegendLayer(el) {
+  const layer = el.getAttribute('data-layer');
+  if (!layer || !(layer in LEGEND_LAYERS)) return;
+  LEGEND_LAYERS[layer] = !LEGEND_LAYERS[layer];
+  el.classList.toggle('leg-off', !LEGEND_LAYERS[layer]);
+  // Re-renderizar el mapa con las capas actualizadas
+  renderLayoutMap(currentLayout);
+}
+
+
 // ── CONSTRUCCIÓN DE LOOKUPS ──────────────────────────────────────
 // MAP_C / MAP_A siguen existiendo para el panel SVG de estantería (shelf.js)
 
@@ -53,56 +75,61 @@ function parseCellCode(code) {
 }
 
 // Zonas especiales conocidas — se renderizan como rectángulos etiquetados
-const SPECIAL_ZONES = new Set(['MUELLE','ENTREGA','RECEPCION','OFICINA','EXPEDICION',
+const SPECIAL_ZONES = new Set(['MUELLE','ENTREGA','ENTRADA','RECEPCION','OFICINA','EXPEDICION',
                                 'PARKING','PASILLO','RAMPA','ESCALERA','ASCENSOR']);
 
 function isSpecial(code) {
   if (!code) return false;
-  return SPECIAL_ZONES.has(code) || /^(MUELLE|ENTREGA|RECEP|OFIC|EXPED|ZONA)/.test(code);
+  return SPECIAL_ZONES.has(code) || /^(MUELLE|ENTREGA|ENTRADA|RECEP|OFIC|EXPED|ZONA)/.test(code);
 }
 
 // Color y clase de una celda de estantería
 function cellClass(p, e, alm) {
   const MAP = alm === 'AUXILIAR1' ? MAP_A : MAP_C;
   const est = MAP[String(p)] && MAP[String(p)][String(e)];
-  if (!est) return 'cs-f'; // en el layout pero sin datos → libre
+  if (!est) return 'cs-f';
 
   const allLocs = [...(est.s || []), ...(est.pk || [])];
   if (!allLocs.length) return 'cs-f';
 
   // ¿Alguna localización tiene artículo a revisar?
-  const hasRevisar = allLocs.some(l =>
-    (l.arts || []).some(a => a.pe > CFG.pesado && a.s >= CFG.rotacion) &&
-    !est.s.some(sl => sl.arts && sl.arts.length) // sin suelo ocupado
-  );
-  if (hasRevisar) return 'cp-rev';
+  if (LEGEND_LAYERS.rev) {
+    const hasRevisar = allLocs.some(l =>
+      (l.arts || []).some(a => a.pe > CFG.pesado && a.s >= CFG.rotacion) &&
+      !est.s.some(sl => sl.arts && sl.arts.length)
+    );
+    if (hasRevisar) return 'cp-rev';
+  }
 
-  // ¿Está en top5 baja rotación?
-  const lowSuelo = alm === 'AUXILIAR1' ? LOW_ROT.asuelo : LOW_ROT.csuelo;
-  const lowPick  = alm === 'AUXILIAR1' ? LOW_ROT.apick  : LOW_ROT.cpick;
+  // ¿Está en top N baja rotación?
   const allCodes = allLocs.map(l => l.c);
-  if (allCodes.some(c => lowSuelo.has(c) || lowPick.has(c))) return 'x-low';
+  if (LEGEND_LAYERS.low) {
+    const lowSuelo = alm === 'AUXILIAR1' ? LOW_ROT.asuelo : LOW_ROT.csuelo;
+    const lowPick  = alm === 'AUXILIAR1' ? LOW_ROT.apick  : LOW_ROT.cpick;
+    if (allCodes.some(c => lowSuelo.has(c) || lowPick.has(c))) return 'x-low';
+  }
 
   // ¿Está en top N alta rotación?
-  const highSuelo = alm === 'AUXILIAR1' ? HIGH_ROT.asuelo : HIGH_ROT.csuelo;
-  const highPick  = alm === 'AUXILIAR1' ? HIGH_ROT.apick  : HIGH_ROT.cpick;
-  if (allCodes.some(c => highSuelo.has(c) || highPick.has(c))) return 'x-high';
+  if (LEGEND_LAYERS.high) {
+    const highSuelo = alm === 'AUXILIAR1' ? HIGH_ROT.asuelo : HIGH_ROT.csuelo;
+    const highPick  = alm === 'AUXILIAR1' ? HIGH_ROT.apick  : HIGH_ROT.cpick;
+    if (allCodes.some(c => highSuelo.has(c) || highPick.has(c))) return 'x-high';
+  }
 
-  // ¿Tiene algún suelo con pallet libre (capacidad fija 3, hueco aunque tenga artículos)?
-  const sueloCodes = (est.s || []).map(l => l.c);
-  if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
+  // ¿Tiene algún suelo con pallet libre?
+  if (LEGEND_LAYERS.pallet) {
+    const sueloCodes = (est.s || []).map(l => l.c);
+    if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
+  }
 
-  // ¿Tiene algún artículo fuera de surtido (NS) próximo a dejar de venderse?
-  if (allCodes.some(c => NS_LOCS.has(c))) return 'x-ns';
+  // ¿Tiene algún artículo fuera de surtido (NS)?
+  if (LEGEND_LAYERS.ns) {
+    if (allCodes.some(c => NS_LOCS.has(c))) return 'x-ns';
+  }
 
   // ¿Hay alguna localización ocupada?
   const anyOcc = allLocs.some(l => l.arts && l.arts.length);
-  if (!anyOcc) return 'cs-f';
-
-  // ¿Subutilizado? (suelo con mezcla ocupado/libre)
-  const sArr = est.s || [];
-  const sOcc = sArr.filter(l => l.arts && l.arts.length).length;
-  if (sArr.length > 1 && sOcc > 0 && sOcc < sArr.length) return 'cs-u';
+  if (!anyOcc) return LEGEND_LAYERS.libre ? 'cs-f' : 'cs-o';
 
   return 'cs-o';
 }
