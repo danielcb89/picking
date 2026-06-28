@@ -204,8 +204,7 @@ function svgSidePanel(xFront, yFront, xBack, yBack, h, dy) {
 // ── SVG PRINCIPAL ────────────────────────────────────────────────
 
 // Altura que ocupa un nivel de picking + su viga, y un nivel de suelo
-const LEVEL_UNIT_H = () => SV.PICK_H + SV.BEAM_H;   // picking + viga
-const FLOOR_UNIT_H = () => SV.FLOOR_H;                // suelo
+const LEVEL_UNIT_H = () => SV.PICK_H + SV.BEAM_H;
 
 // Altura ideal visible = 4 niveles de picking (sin suelo, lo más común)
 // Misma fórmula que svgH con exactamente IDEAL_LEVELS niveles de picking
@@ -385,25 +384,6 @@ function svgPost(x, y, h, svgH, isBack) {
   return out;
 }
 
-// ── VIGA NARANJA CON TORNILLOS ────────────────────────────────────
-function svgBeam(x, y, w) {
-  let out = '';
-  out += `<rect x="${x}" y="${y}" width="${w}" height="${SV.BEAM_H}"
-    fill="${SV.BEAM_COL}" rx="1"/>`;
-  // Sombra inferior
-  out += `<rect x="${x}" y="${y+SV.BEAM_H-3}" width="${w}" height="3"
-    fill="${SV.BEAM_SHADE}" opacity="0.5"/>`;
-  // Tornillos en ambos extremos
-  [x + 18, x + w - 18].forEach(bx => {
-    out += `<circle cx="${bx}" cy="${y+SV.BEAM_H/2}" r="5" fill="#c04000" stroke="#802000" stroke-width="0.8"/>`;
-    out += `<line x1="${bx-3}" y1="${y+SV.BEAM_H/2}" x2="${bx+3}" y2="${y+SV.BEAM_H/2}"
-      stroke="#601000" stroke-width="1.5"/>`;
-    out += `<line x1="${bx}" y1="${y+SV.BEAM_H/2-3}" x2="${bx}" y2="${y+SV.BEAM_H/2+3}"
-      stroke="#601000" stroke-width="1.5"/>`;
-  });
-  return out;
-}
-
 // ── VIGA NARANJA + BANDEJA METÁLICA EN PERSPECTIVA ───────────────
 // La viga (naranja) es la estructura; la bandeja (plateada) es la superficie
 // donde descansan los productos — se dibuja encima de la viga.
@@ -483,7 +463,7 @@ function svgGuard(x, y, isBack) {
 }
 
 // ── CAJA IKEA ────────────────────────────────────────────────────
-function svgBox(a, x, y, w, h, isFloor) {
+function svgBox(a, x, y, w, h, isFloor, overridePW, overridePH) {
   const r       = 3;
   const artData = encodeURIComponent(JSON.stringify({ i:a.i, d:a.d, s:a.s, pe:a.pe, vo:a.vo, mx:a.mx, mn:a.mn }));
   const code    = ikeaCode(a.i);
@@ -498,8 +478,8 @@ function svgBox(a, x, y, w, h, isFloor) {
   const sideCol = '#a07020';
   const topCol  = isFloor ? '#c8933a' : '#c8933a';
   const darkCol = '#7a5418';
-  const pw      = Math.max(5, Math.round(w * 0.07));
-  const ph      = Math.max(4, Math.round(h * 0.05));
+  const pw = overridePW !== undefined ? overridePW : Math.max(5, Math.round(w * 0.07));
+  const ph = overridePH !== undefined ? overridePH : Math.max(4, Math.round(h * 0.05));
 
   // Cara frontal
   out += `<rect x="${x}" y="${y}" width="${w}" height="${h}"
@@ -507,11 +487,12 @@ function svgBox(a, x, y, w, h, isFloor) {
 
   // (franja amarilla eliminada — se ve más color azul)
 
-  // Cara lateral derecha (más oscura para dar volumen) y superior
-  out += `<polygon points="${x+w},${y+3} ${x+w+pw},${y} ${x+w+pw},${y+h-3} ${x+w},${y+h}"
-    fill="${darkCol}" opacity="0.95"/>`;
+  // Cara superior (va detrás de la lateral para z-order correcto)
   out += `<polygon points="${x},${y} ${x+pw},${y-ph} ${x+w+pw},${y-ph} ${x+w},${y}"
     fill="${topCol}" opacity="0.9"/>`;
+  // Cara lateral derecha — vértices conectan exactamente con la superior
+  out += `<polygon points="${x+w},${y} ${x+w+pw},${y-ph} ${x+w+pw},${y+h-ph} ${x+w},${y+h}"
+    fill="${darkCol}" opacity="0.95"/>`;
 
   // ── Etiqueta (igual para suelo y picking) ────────────────────
   if (w >= 40 && h >= 30) {
@@ -571,26 +552,30 @@ function svgBox(a, x, y, w, h, isFloor) {
 // ── CAJAS DE SUELO (pallets) ──────────────────────────────────────
 function drawFloorBoxes(arts, x0, y0, w, h) {
   const n      = arts.length;
-  const boxW   = Math.min(160, Math.floor((w - SV.BOX_MARGIN*2 - SV.BOX_GAP*(n-1)) / n));
-  const totalW = boxW*n + SV.BOX_GAP*(n-1);
-  const startX = x0 + (w - totalW) / 2;
-  const pdx    = Math.round(SV.PERSP_DX * 1.4 * 0.85);  // -15% de profundidad
-  const pdy    = SV.PERSP_DY;   // igual que el resto de la perspectiva del sistema
+  // Con <=3 artículos duplicar separación entre elementos, pero boxW se calcula
+  // con el gap normal para que los pallets no se hagan más anchos
+  const gap     = n <= 3 ? SV.BOX_GAP * 2 : SV.BOX_GAP;
+  const boxW    = Math.min(160, Math.floor((w - SV.BOX_MARGIN*2 - SV.BOX_GAP*(n-1)) / n));
+  const totalW  = boxW*n + gap*(n-1);
+  const startX  = x0 + (w - totalW) / 2;
+  const pdx     = Math.round(SV.PERSP_DX * 1.4 * 0.85);
+  const pdy     = SV.PERSP_DY;
 
-  // Suelo del nivel = y0 + h
-  // Pallet pegado al suelo: pyallet = suelo - PALLET_H
-  // Caja encima del pallet: by = pyallet - boxH
-  const FLOOR_Y  = y0 + h;
-  const palletY  = FLOOR_Y - SV.PALLET_H;
-  const boxH     = Math.min(h - SV.PALLET_H - 16, h * 0.72);
-  const by0      = palletY - boxH;
+  // Profundidad lateral de cajas de suelo +25%
+  const pw = Math.round(Math.max(5, Math.round(boxW * 0.07)) * 1.25);
+  const ph = Math.round(Math.max(4, Math.round(h   * 0.05)) * 1.25);
+
+  const FLOOR_Y = y0 + h;
+  const palletY = FLOOR_Y - SV.PALLET_H;
+  const boxH    = Math.min(h - SV.PALLET_H - 16, h * 0.72);
+  const by0     = palletY - boxH;
 
   let pallets = '';
   let boxes   = '';
   arts.forEach((a, i) => {
-    const bx = startX + i*(boxW + SV.BOX_GAP);
+    const bx = startX + i*(boxW + gap);
     pallets += svgPallet(bx - 4, palletY, boxW + 8, pdx, pdy);
-    boxes   += svgBox(a, bx, by0, boxW, boxH, true);
+    boxes   += svgBox(a, bx, by0, boxW, boxH, true, pw, ph);
   });
   return pallets + boxes;
 }

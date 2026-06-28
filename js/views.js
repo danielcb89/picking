@@ -4,7 +4,17 @@
 // ════════════════════════════════════════════════════════════════
 
 
-// ── HELPERS DE CLASIFICACIÓN ─────────────────────────────────────
+// ── BÚSQUEDA MULTI-TÉRMINO ────────────────────────────────────────
+// El * actúa como AND: "lack*60x60" → el registro debe contener "lack" Y "60x60"
+// Cada término se busca en todos los campos que se pasen como array de strings.
+// Uso: matchTerms('lack*60x60', [a.i, a.d, a.lc, a.la])
+function matchTerms(raw, fields) {
+  if (!raw) return true;
+  const terms = raw.split('*').map(t => t.trim()).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = fields.map(f => (f || '').toLowerCase()).join(' ');
+  return terms.every(t => haystack.includes(t));
+}
 
 function pcls(p) {
   return { CRÍTICA: 'b-rd', ALTA: 'b-rd', MEDIA: 'b-yw', OK: 'b-gn' }[p] || 'b-gy';
@@ -103,10 +113,7 @@ function filterArts() {
     if (floc === 'ambos'   && !(a.lc && a.la))         return false;
     if (fsurt  && a.a !== fsurt)                       return false;
     if (fv === 'prio'   && !['CRÍTICA','ALTA'].includes(a.pr)) return false;
-    if (q && !a.i.toLowerCase().includes(q)
-          && !a.d.toLowerCase().includes(q)
-          && !(a.lc || '').toLowerCase().includes(q)
-          && !(a.la || '').toLowerCase().includes(q))  return false;
+    if (q && !matchTerms(q, [a.i, a.d, a.lc, a.la]))  return false;
     return true;
   });
 
@@ -289,9 +296,7 @@ function renderPesadosTable() {
 
   const filtered = pesadosSearch
     ? sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d)
-        .filter(b => b.i.toLowerCase().includes(pesadosSearch)
-                  || b.d.toLowerCase().includes(pesadosSearch)
-                  || b.loc.toLowerCase().includes(pesadosSearch))
+        .filter(b => matchTerms(pesadosSearch, [b.i, b.d, b.loc]))
     : sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d);
 
   const cnt = document.getElementById('pesadosCount');
@@ -427,9 +432,7 @@ function renderLibreTable() {
   if (libreCardFilter === 'pallet-libre') base = base.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
 
   const filtered = libreSearch
-    ? base.filter(f => f.c.toLowerCase().includes(libreSearch)
-                     || f.almacen.toLowerCase().includes(libreSearch)
-                     || f.lt.toLowerCase().includes(libreSearch))
+    ? base.filter(f => matchTerms(libreSearch, [f.c, f.almacen, f.lt]))
     : base;
 
   const cnt = document.getElementById('libreCount');
@@ -555,9 +558,7 @@ function renderByeTable() {
   if (byeCardFilter === 'sin-stock') base = base.filter(b => b.st <= 0 && b.pv <= 0);
 
   const filtered = byeSearch
-    ? base.filter(b => b.i.toLowerCase().includes(byeSearch)
-                     || b.d.toLowerCase().includes(byeSearch)
-                     || b.loc.toLowerCase().includes(byeSearch))
+    ? base.filter(b => matchTerms(byeSearch, [b.i, b.d, b.loc]))
     : base;
 
   const cnt = document.getElementById('byeCount');

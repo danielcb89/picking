@@ -69,17 +69,50 @@ async function fetchStoreFile() {
 
   // Resto de pestañas = layouts de planta
   LAYOUTS = wb.SheetNames.slice(1).map(nombre => {
-    const ws   = wb.Sheets[nombre];
-    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-    // Normalizar: null y celdas vacías → null, strings en mayúsculas sin espacios
-    const normalized = grid
-      .filter(row => row.some(c => c !== null && c !== ''))
-      .map(row => row.map(c => {
-        if (c === null || c === '') return null;
-        const s = String(c).trim().toUpperCase();
-        return s === '_' ? null : s; // '_' = espacio vacío = null
-      }));
-    return { nombre, grid: normalized };
+    const ws = wb.Sheets[nombre];
+
+    // 1. Calcular dimensiones reales usando !ref + merges
+    const ref   = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s:{r:0,c:0}, e:{r:0,c:0} };
+    const merges = ws['!merges'] || [];
+    const maxMR  = merges.length ? Math.max(...merges.map(m => m.e.r)) : 0;
+    const maxMC  = merges.length ? Math.max(...merges.map(m => m.e.c)) : 0;
+    const nRows  = Math.max(ref.e.r, maxMR) + 1;
+    const nCols  = Math.max(ref.e.c, maxMC) + 1;
+
+    // 2. Grid inicializado a null
+    const grid = Array.from({ length: nRows }, () => new Array(nCols).fill(null));
+
+    // 3. Rellenar celdas normales — solo claves que sean direcciones de celda válidas (ej: A1, B3)
+    Object.keys(ws).filter(k => /^[A-Z]+\d+$/.test(k)).forEach(addr => {
+      const cell = ws[addr];
+      if (!cell || cell.v === undefined || cell.v === null) return;
+      const { r, c } = XLSX.utils.decode_cell(addr);
+      if (r >= nRows || c >= nCols) return;
+      const s = String(cell.v).trim().toUpperCase();
+      grid[r][c] = (s === '' || s === '_') ? null : s;
+    });
+
+    // 4. Leer celdas fusionadas: guardar {v, rows, cols} en top-left,
+    //    marcar el resto como '__MERGED__' para no renderizarlas
+    merges.forEach(m => {
+      const addr = XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c });
+      const cell = ws[addr];
+      const raw  = cell ? String(cell.v || '').trim().toUpperCase() : '';
+      const val  = (raw === '' || raw === '_') ? null : raw;
+      const spanR = m.e.r - m.s.r + 1;
+      const spanC = m.e.c - m.s.c + 1;
+      // Celda origen: objeto con valor y span
+      grid[m.s.r][m.s.c] = val ? { v: val, rows: spanR, cols: spanC } : null;
+      // Celdas cubiertas: marcadas para ignorar al renderizar
+      for (let r = m.s.r; r <= m.e.r; r++) {
+        for (let c = m.s.c; c <= m.e.c; c++) {
+          if (r === m.s.r && c === m.s.c) continue;
+          grid[r][c] = '__MERGED__';
+        }
+      }
+    });
+
+    return { nombre, grid, nRows, nCols };
   });
 
   return ubRows;

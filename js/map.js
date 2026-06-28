@@ -8,21 +8,125 @@
 // Cada clave corresponde a data-layer en el HTML de la leyenda.
 // true = visible en el mapa, false = oculto (cae a color base).
 const LEGEND_LAYERS = {
-  libre:   true,
-  rev:     true,
-  low:     true,
-  high:    true,
-  pallet:  true,
-  ns:      true,
+  libre:    true,
+  low:      true,
+  high:     true,
+  pallet:   true,
+  ns:       true,
+  heatmap:  false,  // mapa de calor — exclusivo con el resto
 };
+
+// Estado anterior de layers para restaurar al desactivar el heatmap
+let _prevLayers = null;
 
 function toggleLegendLayer(el) {
   const layer = el.getAttribute('data-layer');
   if (!layer || !(layer in LEGEND_LAYERS)) return;
-  LEGEND_LAYERS[layer] = !LEGEND_LAYERS[layer];
-  el.classList.toggle('leg-off', !LEGEND_LAYERS[layer]);
-  // Re-renderizar el mapa con las capas actualizadas
+
+  if (layer === 'heatmap') {
+    const activating = !LEGEND_LAYERS.heatmap;
+    if (activating) {
+      _prevLayers = { ...LEGEND_LAYERS };
+      Object.keys(LEGEND_LAYERS).forEach(k => { if (k !== 'heatmap') LEGEND_LAYERS[k] = false; });
+      LEGEND_LAYERS.heatmap = true;
+      // Difuminar los otros, nunca el propio botón heatmap
+      document.querySelectorAll('.leg[data-layer]:not([data-layer="heatmap"])').forEach(e =>
+        e.classList.add('leg-off')
+      );
+      el.classList.add('leg-heat-on');
+      document.getElementById('heatCheck')?.classList.add('on');
+      el.classList.remove('leg-off');
+    } else {
+      if (_prevLayers) Object.assign(LEGEND_LAYERS, _prevLayers);
+      LEGEND_LAYERS.heatmap = false;
+      _prevLayers = null;
+      // Restaurar otros según su estado
+      document.querySelectorAll('.leg[data-layer]:not([data-layer="heatmap"])').forEach(e => {
+        const l = e.getAttribute('data-layer');
+        e.classList.toggle('leg-off', !LEGEND_LAYERS[l]);
+      });
+      el.classList.remove('leg-heat-on');
+      document.getElementById('heatCheck')?.classList.remove('on');
+      el.classList.remove('leg-off');
+    }
+  } else {
+    if (LEGEND_LAYERS.heatmap) return;
+    LEGEND_LAYERS[layer] = !LEGEND_LAYERS[layer];
+    el.classList.toggle('leg-off', !LEGEND_LAYERS[layer]);
+  }
+
   renderLayoutMap(currentLayout);
+}
+
+// Calcula la venta mensual total de una estantería (suma de todos sus artículos con loc)
+function heatValue(p, e, alm) {
+  const MAP = alm === 'AUXILIAR1' ? MAP_A : MAP_C;
+  const est = MAP[String(p)]?.[String(e)];
+  if (!est) return 0;
+  let total = 0;
+  [...(est.s || []), ...(est.pk || [])].forEach(loc => {
+    (loc.arts || []).forEach(a => { total += (a.s || 0); });
+  });
+  return total;
+}
+
+// Precalcula el mapa de calor para el layout activo
+function buildHeatmap(layout) {
+  const grid = layout.grid;
+  const vals = {};
+
+  grid.forEach(row => {
+    (row || []).forEach(raw => {
+      if (!raw || raw === '__MERGED__') return;
+      const v = typeof raw === 'object' ? raw.v : raw;
+      const parsed = parseCellCode(v);
+      if (!parsed) return;
+      const { p, e } = parsed;
+      const alm = almacenForCell(p, e);
+      if (!alm) return;
+      const heat = heatValue(p, e, alm);
+      const key = `${p},${e},${alm}`;
+      vals[key] = heat;
+    });
+  });
+
+  // Usar percentil 95 como máximo para que los outliers no desvirtúen
+  const sorted = Object.values(vals).filter(v => v > 0).sort((a, b) => a - b);
+  const p95idx = Math.floor(sorted.length * 0.90);
+  const cap    = sorted[p95idx] || sorted[sorted.length - 1] || 1;
+
+  // Normalizar en [0,1] usando el cap — valores por encima del p95 = 1
+  const norm = {};
+  Object.entries(vals).forEach(([k, v]) => {
+    norm[k] = Math.min(1, v / cap);
+  });
+
+  return { vals, norm };
+}
+
+function heatColor(norm) {
+  // Paleta: azul frío → verde azulado → verde → amarillo/dorado → naranja → rojo
+  const stops = [
+    [0.00, '#4e9bb5'],  // azul frío
+    [0.20, '#4aab8e'],  // verde azulado
+    [0.40, '#7bb854'],  // verde
+    [0.60, '#d4b84a'],  // amarillo dorado
+    [0.80, '#e07c3a'],  // naranja
+    [1.00, '#c0392b'],  // rojo
+  ];
+  // Encontrar los dos stops entre los que cae norm e interpolar
+  let i = 0;
+  while (i < stops.length - 2 && norm > stops[i + 1][0]) i++;
+  const [t0, c0] = stops[i];
+  const [t1, c1] = stops[i + 1];
+  const f = (norm - t0) / (t1 - t0);
+  // Interpolar RGB
+  const hex = c => parseInt(c, 16);
+  const lerp = (a, b) => Math.round(a + (b - a) * f);
+  const r0 = hex(c0.slice(1,3)), g0 = hex(c0.slice(3,5)), b0 = hex(c0.slice(5,7));
+  const r1 = hex(c1.slice(1,3)), g1 = hex(c1.slice(3,5)), b1 = hex(c1.slice(5,7));
+  const r = lerp(r0,r1), g = lerp(g0,g1), b = lerp(b0,b1);
+  return `rgb(${r},${g},${b})`;
 }
 
 
@@ -66,15 +170,21 @@ function almacenForCell(p, e) {
   return null;
 }
 
-// Parsea una celda del grid tipo "P12E18" → {p:12, e:18} o null si no es válida
+// Extrae el string de valor de una celda del grid (string o {v,rows,cols})
+function cellVal(cell) {
+  if (!cell || cell === '__MERGED__') return null;
+  return typeof cell === 'object' ? cell.v : cell;
+}
+
+// Parsea "P12E18" → {p:12, e:18} o null
 function parseCellCode(code) {
   if (!code) return null;
-  const m = code.match(/^P(\d+)E(\d+)$/);
+  const m = String(code).match(/^P(\d+)E(\d+)$/);
   if (!m) return null;
   return { p: parseInt(m[1]), e: parseInt(m[2]) };
 }
 
-// Zonas especiales conocidas — se renderizan como rectángulos etiquetados
+// Zonas especiales conocidas
 const SPECIAL_ZONES = new Set(['MUELLE','ENTREGA','ENTRADA','RECEPCION','OFICINA','EXPEDICION',
                                 'PARKING','PASILLO','RAMPA','ESCALERA','ASCENSOR']);
 
@@ -91,15 +201,6 @@ function cellClass(p, e, alm) {
 
   const allLocs = [...(est.s || []), ...(est.pk || [])];
   if (!allLocs.length) return 'cs-f';
-
-  // ¿Alguna localización tiene artículo a revisar?
-  if (LEGEND_LAYERS.rev) {
-    const hasRevisar = allLocs.some(l =>
-      (l.arts || []).some(a => a.pe > CFG.pesado && a.s >= CFG.rotacion) &&
-      !est.s.some(sl => sl.arts && sl.arts.length)
-    );
-    if (hasRevisar) return 'cp-rev';
-  }
 
   // ¿Está en top N baja rotación?
   const allCodes = allLocs.map(l => l.c);
@@ -154,103 +255,145 @@ function renderLayoutMap(layoutIdx) {
     return;
   }
 
-  const grid    = layout.grid;
-  const nCols   = Math.max(...grid.map(r => r.length));
-  const CELL_W  = 22;
-  const CELL_H  = 22;
-  const GAP     = 2;
+  const grid  = layout.grid;
+  const nRows = layout.nRows || grid.length;
+  const nCols = layout.nCols || Math.max(...grid.map(r => r.length));
+  const GAP   = 1;
 
-  // ── Detectar regiones especiales contiguas (flood fill) ──────────
-  const nRows  = grid.length;
-  const visited = Array.from({ length: nRows }, () => new Array(nCols).fill(false));
+  // Tamaño de celda: medir el contenedor real tras el primer render
+  // Primera pasada: usar estimación. Segunda pasada (rAF): medida real.
+  // El panel derecho tiene la altura correcta — usarla como referencia para el mapa
+  const mapSideEl     = document.getElementById('mapSidePanel');
+  const availH        = mapSideEl ? mapSideEl.getBoundingClientRect().height : (window.innerHeight - 114);
+  const spaceForCells = availH - GAP * (nRows - 1);
+  const CELL_PX       = Math.min(28, Math.max(5, Math.floor(spaceForCells / nRows)));
 
-  function floodFill(startR, startC, code) {
-    const queue = [[startR, startC]], cells = [];
-    while (queue.length) {
-      const [r, c] = queue.pop();
-      if (r < 0 || r >= nRows || c < 0 || c >= nCols) continue;
-      if (visited[r][c]) continue;
-      const val = (grid[r] || [])[c] || null;
-      if (val !== code) continue;
-      visited[r][c] = true;
-      cells.push([r, c]);
-      queue.push([r+1,c],[r-1,c],[r,c+1],[r,c-1]);
-    }
-    return cells;
-  }
+  // Grid CSS: cada columna y fila mide exactamente CELL_PX
+  const colTemplate = `repeat(${nCols}, ${CELL_PX}px)`;
+  const rowTemplate = `repeat(${nRows}, ${CELL_PX}px)`;
 
-  // Mapa: "row,col" → { regionCode, spanR, spanC, isOrigin }
-  const regionMap = {};
-  grid.forEach((row, r) => {
-    (row || []).forEach((cell, c) => {
-      if (!cell || !isSpecial(cell) || visited[r][c]) return;
-      const cells = floodFill(r, c, cell);
-      if (!cells.length) return;
-      const minR = Math.min(...cells.map(([rr]) => rr));
-      const maxR = Math.max(...cells.map(([rr]) => rr));
-      const minC = Math.min(...cells.map(([,cc]) => cc));
-      const maxC = Math.max(...cells.map(([,cc]) => cc));
-      // Solo la celda top-left de la región renderiza el div real
-      cells.forEach(([rr, cc]) => {
-        regionMap[`${rr},${cc}`] = {
-          code: cell,
-          isOrigin: rr === minR && cc === minC,
-          spanR: maxR - minR + 1,
-          spanC: maxC - minC + 1,
-        };
-      });
-    });
-  });
-
-  // ── Construir grid CSS ───────────────────────────────────────────
+  // Precalcular mapa de calor si está activo
+  let heatData = null;
+  if (LEGEND_LAYERS.heatmap) heatData = buildHeatmap(layout);
   let html = `<div class="layout-grid" style="
     display:grid;
-    grid-template-columns:repeat(${nCols},${CELL_W}px);
-    grid-template-rows:repeat(${nRows},${CELL_H}px);
+    grid-template-columns:${colTemplate};
+    grid-template-rows:${rowTemplate};
     gap:${GAP}px;
-    padding:4px;
     overflow:visible;
   ">`;
 
   for (let r = 0; r < nRows; r++) {
     for (let c = 0; c < nCols; c++) {
-      const cell = (grid[r] || [])[c] || null;
-      const key  = `${r},${c}`;
-      const reg  = regionMap[key];
+      const raw  = (grid[r] || [])[c];
 
-      if (reg) {
-        if (!reg.isOrigin) continue; // las celdas no-origen no generan HTML
-        // Región especial — un único div con span
-        html += `<div class="layout-special-region" style="
-          grid-column:${c+1}/span ${reg.spanC};
-          grid-row:${r+1}/span ${reg.spanR};
-        ">${reg.code}</div>`;
+      // Saltar celdas cubiertas por merge — la origen ya tiene el span
+      if (raw === '__MERGED__') continue;
+
+      // Obtener valor y span
+      const isObj = raw && typeof raw === 'object';
+      const v     = cellVal(raw);
+      const spanC = isObj ? (raw.cols || 1) : 1;
+      const spanR = isObj ? (raw.rows || 1) : 1;
+      const pos   = `grid-column:${c+1}/span ${spanC};grid-row:${r+1}/span ${spanR};`;
+
+      // Celda vacía — no generar ningún div (el grid la deja vacía automáticamente)
+      if (!v) continue;
+
+      // Zona especial
+      if (isSpecial(v)) {
+        html += `<div class="layout-special-region" style="${pos}">${v}</div>`;
         continue;
       }
 
-      if (!cell) {
-        html += `<div class="layout-empty"></div>`;
-        continue;
-      }
-
-      const parsed = parseCellCode(cell);
+      const parsed = parseCellCode(v);
       if (!parsed) {
-        html += `<div class="layout-cell layout-unknown" title="${cell}">${cell.substring(0,4)}</div>`;
+        html += `<div class="layout-cell layout-unknown" style="${pos}" title="${v}">${v.substring(0,6)}</div>`;
         continue;
       }
 
       const { p, e } = parsed;
       const alm      = almacenForCell(p, e);
       if (!alm) {
-        html += `<div class="layout-cell cs-f" style="opacity:.4" title="${cell}"></div>`;
+        html += `<div class="layout-cell cs-f" style="opacity:.4;${pos}" title="${v}"></div>`;
         continue;
       }
-      const cls      = cellClass(p, e, alm);
+
+      let styleExtra = '';
+      let cls;
+      if (heatData) {
+        const norm = heatData.norm[`${p},${e},${alm}`] ?? 0;
+        // Cuantizar a 8 colores fijos
+        const quantNorm = Math.min(7, Math.floor(norm * 8)) / 7;
+        const col  = heatColor(quantNorm);
+
+        // Vecino real considerando el span — si hay hueco vacío sigue buscando
+        const neighborColor = (dr, dc) => {
+          let nr = dr < 0 ? r - 1 : dr > 0 ? r + spanR : r;
+          let nc = dc < 0 ? c - 1 : dc > 0 ? c + spanC : c;
+
+          // Buscar hasta encontrar una celda con color (saltando huecos vacíos)
+          for (let step = 0; step < 6; step++) {
+            if (nr < 0 || nr >= nRows || nc < 0 || nc >= nCols) return null;
+            let nraw = (grid[nr] || [])[nc];
+            // Si es __MERGED__ buscar la celda origen
+            if (nraw === '__MERGED__') {
+              for (let sr = nr; sr >= 0; sr--) {
+                for (let sc = nc; sc >= 0; sc--) {
+                  const t = (grid[sr] || [])[sc];
+                  if (t && t !== '__MERGED__') { nraw = t; break; }
+                }
+                if (nraw !== '__MERGED__') break;
+              }
+            }
+            const nv = cellVal(nraw);
+            if (nv) {
+              const np = parseCellCode(nv);
+              if (!np) return null;
+              const nalm = almacenForCell(np.p, np.e);
+              if (!nalm) return null;
+              const nnorm = heatData.norm[`${np.p},${np.e},${nalm}`];
+              if (nnorm === undefined) return null;
+              const nquant = Math.min(7, Math.floor(nnorm * 8)) / 7;
+              return heatColor(nquant);
+            }
+            // Celda vacía — seguir buscando en la misma dirección
+            nr += dr;
+            nc += dc;
+          }
+          return null;
+        };
+
+        const blendRgba = (c1, c2) => {
+          if (!c2) return 'transparent'; // sin vecino = no tapar nada
+          const m1 = c1.match(/\d+/g), m2 = c2.match(/\d+/g);
+          if (!m1 || !m2) return 'transparent';
+          const rv = Math.round((+m1[0] + +m2[0]) / 2);
+          const gv = Math.round((+m1[1] + +m2[1]) / 2);
+          const bv = Math.round((+m1[2] + +m2[2]) / 2);
+          return `rgba(${rv},${gv},${bv},0.85)`;
+        };
+        const cL = blendRgba(col, neighborColor(0, -1));
+        const cR = blendRgba(col, neighborColor(0,  1));
+        const cT = blendRgba(col, neighborColor(-1, 0));
+        const cB = blendRgba(col, neighborColor( 1, 0));
+
+        // Gradiente: centro=col, bordes=color mezclado con vecino
+        styleExtra = `background:
+          linear-gradient(to right,  ${cL} 0%, transparent 100%),
+          linear-gradient(to left,   ${cR} 0%, transparent 100%),
+          linear-gradient(to bottom, ${cT} 0%, transparent 100%),
+          linear-gradient(to top,    ${cB} 0%, transparent 100%),
+          ${col};`;
+        cls = 'cs-o';
+      } else {
+        cls = cellClass(p, e, alm);
+      }
+
       const firstLoc = locDataForCell(p, e, alm);
       html += `<div class="layout-cell loc-cell ${cls}"
-        data-loc="${firstLoc || ''}"
-        data-p="${p}" data-e="${e}" data-alm="${alm}"
-        title="${cell}"
+        data-loc="${firstLoc || ''}" data-p="${p}" data-e="${e}" data-alm="${alm}"
+        title="${v}" style="${pos}${styleExtra}"
         onmouseenter="showTT(event,this)"
         onclick="openShelfDetail(this)"></div>`;
     }
@@ -258,11 +401,6 @@ function renderLayoutMap(layoutIdx) {
 
   html += '</div>';
   document.getElementById('mapCont').innerHTML = html;
-}
-
-// Alias para compatibilidad con app.js que llama renderWarehouseMap()
-function renderWarehouseMap() {
-  renderLayoutMap(currentLayout);
 }
 
 
@@ -396,58 +534,214 @@ document.addEventListener('mousemove', e => {
 });
 
 
-// ── BÚSQUEDA DE ARTÍCULO EN EL MAPA ─────────────────────────────
+// ── PANEL LATERAL DE BÚSQUEDA ────────────────────────────────────
 
-function highlightArtOnMap(q) {
-  document.querySelectorAll('.loc-cell.map-highlight').forEach(el => el.classList.remove('map-highlight'));
-  const info = document.getElementById('mapSearchInfo');
+// Helper multi-término (mismo que en views.js — duplicado para independencia de módulo)
+function _matchTerms(raw, fields) {
+  if (!raw) return true;
+  const terms = raw.split('*').map(t => t.trim()).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = fields.map(f => (f || '').toLowerCase()).join(' ');
+  return terms.every(t => haystack.includes(t));
+}
 
+function mapSideSearch(q) {
   const term = (q || '').trim().toLowerCase();
-  if (!term) { info.textContent = ''; return; }
 
-  const matched = ARTS.filter(a =>
-    a.i.toLowerCase().includes(term) || a.d.toLowerCase().includes(term)
-  );
-  if (!matched.length) { info.textContent = 'Sin resultados.'; return; }
+  // Limpiar highlights del mapa
+  document.querySelectorAll('.loc-cell.map-highlight').forEach(el => el.classList.remove('map-highlight'));
+  document.getElementById('mapSearchInfo').textContent = '';
 
-  const locs = new Set();
-  matched.forEach(a => {
-    if (a.lc) locs.add(a.lc);
-    if (a.la) locs.add(a.la);
-  });
-  if (!locs.size) {
-    info.textContent = `${matched.length} artículo(s) encontrado(s) — sin localización asignada.`;
+  const cont = document.getElementById('mapSideContent');
+
+  if (!term) {
+    cont.innerHTML = '<div class="msp-empty">Escribe para buscar artículos</div>';
     return;
   }
 
-  // En el nuevo mapa las celdas tienen data-p y data-e; buscamos por data-loc también
+  const matched = ARTS.filter(a =>
+    _matchTerms(term, [a.i, a.d, a.lc, a.la])
+  ).sort((a, b) => {
+    const priA = a.a === 'S' ? 0 : (a.st > 0 || a.pv > 0) ? 1 : 2;
+    const priB = b.a === 'S' ? 0 : (b.st > 0 || b.pv > 0) ? 1 : 2;
+    if (priA !== priB) return priA - priB;
+    // Mismo grupo: S → más ventas primero; NS → más stock+PV primero
+    if (priA === 0) return (b.s || 0) - (a.s || 0);
+    return ((b.st || 0) + (b.pv || 0)) - ((a.st || 0) + (a.pv || 0));
+  }).slice(0, 80);
+
+  if (!matched.length) {
+    cont.innerHTML = '<div class="msp-empty">Sin resultados</div>';
+    return;
+  }
+
+  // Resaltar celdas en el mapa
+  const locs = new Set();
+  matched.forEach(a => { if (a.lc) locs.add(a.lc); if (a.la) locs.add(a.la); });
   let found = 0;
   document.querySelectorAll('.loc-cell[data-loc]').forEach(el => {
     const locCode = el.getAttribute('data-loc');
-    // También comprobar todas las locs de esa estantería
     const p = el.getAttribute('data-p'), estEl = el.getAttribute('data-e');
     const alm = el.getAttribute('data-alm');
     let hit = locs.has(locCode);
     if (!hit && p && estEl && alm) {
       const MAP = alm === 'AUXILIAR1' ? MAP_A : MAP_C;
       const est = MAP[p] && MAP[p][estEl];
-      if (est) {
-        const all = [...(est.s || []), ...(est.pk || [])];
-        hit = all.some(l => locs.has(l.c));
-      }
+      if (est) hit = [...(est.s||[]),...(est.pk||[])].some(l => locs.has(l.c));
     }
     if (hit) { el.classList.add('map-highlight'); found++; }
   });
 
-  info.textContent = `${matched.length} artículo(s) · ${found} celda(s) resaltada(s)`;
-  const first = document.querySelector('.loc-cell.map-highlight');
-  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  if (found) {
+    const first = document.querySelector('.loc-cell.map-highlight');
+    if (first) first.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+    document.getElementById('mapSearchInfo').textContent =
+      `${matched.length} artículo(s) · ${found} celda(s)`;
+  }
+
+  // Renderizar lista de resultados
+  const rows = matched.map(a => `
+    <div class="msp-row" onclick="showArtCard('${a.i}')">
+      <span class="msp-code">${a.i}</span>
+      <span class="msp-desc">${a.d}</span>
+    </div>`).join('');
+
+  cont.innerHTML = `
+    <div class="msp-count">${matched.length} resultado${matched.length!==1?'s':''}</div>
+    <div class="msp-list">${rows}</div>`;
 }
 
-function clearMapHighlight() {
-  document.querySelectorAll('.loc-cell.map-highlight').forEach(el => el.classList.remove('map-highlight'));
+function mapSideClear() {
   const input = document.getElementById('mapSearch');
   if (input) input.value = '';
-  const info = document.getElementById('mapSearchInfo');
-  if (info) info.textContent = '';
+  mapSideSearch('');
+}
+
+// Alias para compatibilidad (clearMapHighlight se llama desde otros sitios)
+function clearMapHighlight() { mapSideClear(); }
+function highlightArtOnMap(q) { mapSideSearch(q); }
+
+// ── TARJETA DE ARTÍCULO ──────────────────────────────────────────
+
+function showArtCard(artId) {
+  const a = ARTS.find(x => x.i === artId);
+  if (!a) return;
+
+  // Resaltar solo las celdas de este artículo — quitar el resto
+  const artLocs = new Set([a.lc, a.la].filter(Boolean));
+  document.querySelectorAll('.loc-cell.map-highlight').forEach(el => el.classList.remove('map-highlight'));
+  document.querySelectorAll('.loc-cell[data-loc]').forEach(el => {
+    const locCode = el.getAttribute('data-loc');
+    const p = el.getAttribute('data-p'), estEl = el.getAttribute('data-e');
+    const alm = el.getAttribute('data-alm');
+    let hit = artLocs.has(locCode);
+    if (!hit && p && estEl && alm) {
+      const MAP = alm === 'AUXILIAR1' ? MAP_A : MAP_C;
+      const est = MAP[p] && MAP[p][estEl];
+      if (est) hit = [...(est.s||[]),...(est.pk||[])].some(l => artLocs.has(l.c));
+    }
+    if (hit) el.classList.add('map-highlight');
+  });
+  // Scroll a la primera celda encontrada
+  const first = document.querySelector('.loc-cell.map-highlight');
+  if (first) first.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+  const fmt  = d => d ? d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'}) : null;
+  const val  = v => (v !== null && v !== undefined && v !== 0 && v !== '') ? v : null;
+  const row  = (label, value, extra) => value !== null && value !== undefined
+    ? `<div class="ac-row"><span class="ac-lbl">${label}</span><span class="ac-val">${value}${extra||''}</span></div>`
+    : '';
+
+  // Surtido badge
+  const surtBadge = a.a === 'S'  ? '<span class="badge b-gn">En surtido</span>'
+                  : a.a === 'NS' ? '<span class="badge b-gy">Fuera de surtido</span>'
+                  : `<span class="badge b-bl">${a.a||'—'}</span>`;
+
+  // Localización Central
+  let locC = '';
+  if (a.lc) {
+    locC = `<div class="ac-loc-block">
+      <div class="ac-loc-title" style="color:var(--b2)">📦 Central</div>
+      ${row('Ubicación', `<span style="color:var(--b2);font-weight:700">${a.lc}</span>`)}
+      ${row('Máximo', val(a.mx), ' uds')}
+      ${row('Mínimo', val(a.mn), ' uds')}
+    </div>`;
+  }
+
+  // Localización Aux1
+  let locA = '';
+  if (a.la) {
+    locA = `<div class="ac-loc-block">
+      <div class="ac-loc-title" style="color:var(--aux-lbl)">📦 Auxiliar1</div>
+      ${row('Ubicación', `<span style="color:var(--aux-lbl);font-weight:700">${a.la}</span>`)}
+      ${row('Máximo', val(a.mxa), ' uds')}
+      ${row('Mínimo', val(a.mna), ' uds')}
+    </div>`;
+  }
+
+  const html = `
+    <div class="art-card">
+      <button class="ac-back" onclick="mapSideBack()">← Volver a resultados</button>
+
+      <!-- Espacio para foto futura -->
+      <div class="ac-photo-placeholder">
+        <span>📷</span>
+        <span>Foto del artículo</span>
+      </div>
+
+      <!-- Identificación -->
+      <div class="ac-section">
+        <div class="ac-section-title">Identificación</div>
+        ${row('Código', `<strong>${a.i}</strong>`)}
+        ${row('Descripción', a.d)}
+        ${row('Surtido', surtBadge)}
+      </div>
+
+      <!-- Físico -->
+      <div class="ac-section">
+        <div class="ac-section-title">Físico</div>
+        ${row('Uds/pallet', val(a.pl))}
+        ${row('Tipo', a.wc)}
+        ${row('Peso', val(a.pe), ' kg')}
+        ${row('Volumen', val(a.vo), ' dm³')}
+        ${row('MDQ', val(a.md))}
+      </div>
+
+      <!-- Ventas -->
+      <div class="ac-section">
+        <div class="ac-section-title">Ventas</div>
+        ${row('Vta/mes', val(a.s), ' uds')}
+        ${a.sw != null ? row('Vta/sem', val(a.sw), ' uds') : ''}
+        ${a.sa != null ? row('Vta/año', val(a.sa), ' uds') : ''}
+        ${row('Inicio venta', fmt(a.ss))}
+        ${row('Fin venta', fmt(a.es))}
+      </div>
+
+      <!-- Localización -->
+      ${(a.lc || a.la) ? `<div class="ac-section">
+        <div class="ac-section-title">Localización</div>
+        ${locC}${locA}
+      </div>` : ''}
+
+      <!-- Stock -->
+      <div class="ac-section">
+        <div class="ac-section-title">Stock</div>
+        ${row('Stock total', val(a.st), ' uds')}
+        ${row('Pedido en camino', val(a.pv), ' uds')}
+      </div>
+    </div>`;
+
+  // Guardar el HTML de la lista para poder volver
+  const cont = document.getElementById('mapSideContent');
+  cont._listHTML = cont.innerHTML;
+  cont.innerHTML = html;
+}
+
+function mapSideBack() {
+  const cont = document.getElementById('mapSideContent');
+  if (cont._listHTML) {
+    cont.innerHTML = cont._listHTML;
+    // Restaurar highlights de todos los resultados de la búsqueda
+    const q = (document.getElementById('mapSearch') || {}).value || '';
+    if (q.trim()) mapSideSearch(q);
+  }
 }
