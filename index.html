@@ -267,26 +267,31 @@
       <!-- PANEL: Mapa del almacén -->
       <div class="panel act" id="p-mapa">
         <div class="map-hdr">
-          <div>
-            <div class="map-title">Mapa del almacén — Planta</div>
-            <div class="map-sub">
-              Vista de planta · Hover para detalles · Click para ver estantería
+          <span class="map-title">Mapa del almacén — Planta</span>
+          <span class="map-sep">·</span>
+          <span class="map-sub">Vista de planta · Click para ver estantería</span>
+          <span id="mapSearchInfo" class="map-search-info"></span>
+        </div>
+        <div class="map-body">
+          <!-- Área del mapa (izquierda, con scroll) -->
+          <div class="map-area">
+            <div id="layoutTabs"></div>
+            <div id="mapCont"></div>
+          </div>
+          <!-- Panel lateral derecho: buscador + resultados / tarjeta -->
+          <div class="map-side" id="mapSidePanel">
+            <div class="msp-search">
+              <input class="sbox" type="text" id="mapSearch"
+                placeholder="🔍 Buscar artículo..."
+                style="width:100%;box-sizing:border-box"
+                oninput="mapSideSearch(this.value)">
+              <button class="btn-exp" onclick="mapSideClear()" title="Limpiar">✕</button>
+            </div>
+            <div id="mapSideContent">
+              <div class="msp-empty">Escribe para buscar artículos</div>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-            <input class="sbox" type="text" id="mapSearch"
-              placeholder="Buscar artículo en mapa..."
-              style="width:220px;padding:6px 11px"
-              oninput="highlightArtOnMap(this.value)">
-            <button class="btn-exp" onclick="clearMapHighlight()">✕</button>
-          </div>
         </div>
-
-        <!-- Tabs de layout (se generan dinámicamente en app.js si hay >1 layout) -->
-        <div id="layoutTabs"></div>
-
-        <div id="mapSearchInfo" style="font-size:11px;color:var(--mu)"></div>
-        <div id="mapCont"></div>
       </div>
 
       <!-- PANEL: Artículos -->
@@ -469,9 +474,6 @@
       <div class="leg-check">✓</div><div class="ldot cs-f"></div><span class="leg-label">Libre</span>
     </div>
     <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
-    <div class="leg" data-layer="rev" onclick="toggleLegendLayer(this)">
-      <div class="leg-check">✓</div><div class="ldot cp-rev"></div><span class="leg-label">🟠 Manipulación pesada</span>
-    </div>
     <div class="leg" data-layer="low" onclick="toggleLegendLayer(this)">
       <div class="leg-check">✓</div><div class="ldot x-low"></div><span class="leg-label">🟣 Top menor rotación</span>
     </div>
@@ -486,6 +488,12 @@
     </div>
     <div class="leg" style="cursor:default;opacity:.6;pointer-events:none">
       <div class="leg-check" style="visibility:hidden"></div><div class="ldot layout-special-dot"></div><span class="leg-label">Zona especial</span>
+    </div>
+    <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
+    <div class="leg leg-heat" data-layer="heatmap" onclick="toggleLegendLayer(this)">
+      <div class="heat-check" id="heatCheck"></div>
+      <div class="ldot" style="background:linear-gradient(90deg,#6eb5ff,#22c55e,#facc15,#f97316,#ef4444);border-radius:2px;"></div>
+      <span class="leg-label">🌡️ Mapa de calor</span>
     </div>
   </div>
 
