@@ -1,0 +1,37 @@
+services:
+
+  wms-optimizer:
+    image: nginx:alpine
+    container_name: picking_ikea2
+    restart: unless-stopped
+    ports:
+      - "1500:80"
+    volumes:
+      - /srv/dev-disk-by-uuid-9bcfee3a-a3cc-4f9b-a0dd-c88be1d61db5/piNas/appdata/ikea/www:/usr/share/nginx/html:ro
+      - /srv/dev-disk-by-uuid-9bcfee3a-a3cc-4f9b-a0dd-c88be1d61db5/piNas/appdata/ikea/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - ikea-api
+    networks:
+      - ikea-net
+
+  ikea-api:
+    image: node:22-alpine
+    container_name: picking_ikea_api2
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install --omit=dev && node index.js"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS}
+      - DB_PATH=/data/picking.db
+    volumes:
+      - /srv/dev-disk-by-uuid-9bcfee3a-a3cc-4f9b-a0dd-c88be1d61db5/piNas/appdata/ikea/server:/app
+      - /srv/dev-disk-by-uuid-9bcfee3a-a3cc-4f9b-a0dd-c88be1d61db5/piNas/appdata/ikea/www/almacenes:/almacenes:ro
+      - /srv/dev-disk-by-uuid-9bcfee3a-a3cc-4f9b-a0dd-c88be1d61db5/piNas/appdata/ikea/www/db:/data
+    networks:
+      - ikea-net
+
+networks:
+  ikea-net:
+    driver: bridge

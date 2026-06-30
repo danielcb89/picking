@@ -4,23 +4,58 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Gestor Picking IKEA — SARTON GROUP</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
   <!-- Librería Excel en local -->
   <script src="vendor/xlsx.full.min.js"></script>
   <!-- Estilos -->
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
 <!-- ══════════════════════════════════════════
+     PANTALLA DE LOGIN
+     ══════════════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="up-logo" style="margin-bottom:32px;justify-content:center">
+      <div class="up-icon"><img src="logo.png" alt="IKEA"></div>
+      <div>
+        <div class="up-title">Gestor Picking IKEA</div>
+        <div class="up-sub">SARTON GROUP</div>
+      </div>
+    </div>
+    <div class="login-field">
+      <label class="login-label">Usuario</label>
+      <input class="login-input" type="text" id="loginUser" autocomplete="username" placeholder="usuario">
+    </div>
+    <div class="login-field">
+      <label class="login-label">Contraseña</label>
+      <input class="login-input" type="password" id="loginPass" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="up-btn" id="loginBtn" onclick="doLogin()" style="width:100%;justify-content:center;margin-top:8px">
+      Entrar
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      PANTALLA DE CARGA DE FICHEROS
      ══════════════════════════════════════════ -->
-<div id="uploadScreen">
+<div id="uploadScreen" style="display:none">
   <div class="up-logo">
-    <div class="up-icon">📦</div>
+    <div class="up-icon"><img src="logo.png" alt="IKEA"></div>
     <div>
       <div class="up-title">Gestor Picking IKEA</div>
       <div class="up-sub">SARTON GROUP</div>
     </div>
+  </div>
+
+  <!-- Barra de sesión -->
+  <div class="up-session-bar">
+    <span class="up-session-user" id="sessionUserLabel"></span>
+    <button class="up-session-btn" id="adminUsersBtn" onclick="openUsersPanel()" style="display:none">👥 Usuarios</button>
+    <button class="up-session-btn up-session-btn--out" onclick="doLogout()">Cerrar sesión</button>
   </div>
 
   <div class="up-grid">
@@ -84,14 +119,25 @@
         Selecciona la tienda para cargar<br>su fichero de ubicaciones
       </div>
       <div class="store-select-wrap">
-        <label class="store-select-label" for="storeSelect">Elige tienda</label>
-        <select id="storeSelect" class="store-select" onchange="onStoreSelect(this)">
+        <label class="store-select-label">Elige tienda</label>
+        <select id="storeSelect" style="display:none" onchange="onStoreSelect(this)">
           <option value="">— Seleccionar —</option>
           <option value="PMI">PMI — Palma de Mallorca</option>
           <option value="TFE">TFE — Tenerife</option>
           <option value="GCA">GCA — Gran Canaria</option>
           <option value="LZA">LZA — Lanzarote</option>
         </select>
+        <div class="csel csel-store" data-for="storeSelect">
+          <div class="csel-val" style="color:var(--mu)">— Seleccionar —</div>
+          <div class="csel-arrow">▾</div>
+          <div class="csel-drop">
+            <div class="csel-opt" data-value="">— Seleccionar —</div>
+            <div class="csel-opt" data-value="PMI">PMI — Palma de Mallorca</div>
+            <div class="csel-opt" data-value="TFE">TFE — Tenerife</div>
+            <div class="csel-opt" data-value="GCA">GCA — Gran Canaria</div>
+            <div class="csel-opt" data-value="LZA">LZA — Lanzarote</div>
+          </div>
+        </div>
       </div>
       <div class="up-card-status" id="st2"></div>
     </div>
@@ -113,7 +159,7 @@
 <!-- ══════════════════════════════════════════
      APLICACIÓN PRINCIPAL
      ══════════════════════════════════════════ -->
-<div id="app">
+<div id="app" style="display:none">
 
   <!-- Tooltip flotante del mapa -->
   <div class="tt" id="tt"></div>
@@ -124,20 +170,24 @@
   <!-- CABECERA -->
   <header>
     <div class="logo">
-      <div class="logo-icon">📦</div>
+      <div class="logo-icon"><img src="logo.png" alt="IKEA"></div>
       <div>
         <div class="logo-tx">Gestor Picking IKEA</div>
         <div class="logo-sub" id="headerStoreName">—</div>
       </div>
     </div>
 
-    <div class="hpills">
-      <div class="pill"><span class="lbl">Locs Central</span><span id="hLocsC">—</span></div>
-      <div class="pill"><span class="lbl">Locs Aux1</span>   <span id="hLocsA">—</span></div>
-      <div class="pill"><span class="lbl">Con loc</span>     <span id="hConLoc">—</span></div>
-    </div>
+    <!-- IDs ocultos que el JS actualiza — no se muestran -->
+    <span id="hLocsC" style="display:none"></span>
+    <span id="hLocsA" style="display:none"></span>
+    <span id="hConLoc" style="display:none"></span>
 
-    <button class="hbtnr" onclick="location.reload()">↺ Cambiar tienda</button>
+    <div style="display:flex;align-items:center;gap:7px">
+      <button class="hbtnr" id="n-usuarios-hdr" onclick="openUsersPanel()" style="display:none">👥 Usuarios</button>
+      <button class="hbtnr nav-logout" onclick="doLogout()" id="n-logout-hdr">🚪 Cerrar sesión</button>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Cambiar entre modo claro y oscuro">🌙</button>
+      <button class="hbtnr" onclick="cambiarTienda()">↺ Cambiar tienda</button>
+    </div>
   </header>
 
   <!-- LAYOUT PRINCIPAL -->
@@ -164,9 +214,7 @@
         <div class="nav"     onclick="gotoView('pesados')" id="n-pesados">🟠 Artículos pesados
           <span class="help-ico sidebar-align" data-tip="Artículos de peso elevado y alta rotación que no tienen posición de suelo asignada en ningún almacén — obligan a manipulación manual repetida.">?</span>
         </div>
-        <div class="nav"     onclick="gotoView('ajustes')" id="n-ajustes">⚙️ Ajustes
-          <span class="help-ico sidebar-align" data-tip="Umbrales configurables: rotación, peso de manipulación pesada, Top N menor rotación y % de espacio libre por defecto.">?</span>
-        </div>
+        <span id="n-usuarios" style="display:none"></span>
       </div>
 
       <div class="divr"></div>
@@ -181,81 +229,366 @@
             <input type="number" id="fVmin" value="0" min="0" oninput="filterArts()">
           </div>
 
+          <!-- SELECT OCULTO — lo usa el JS existente sin cambios -->
+          <select id="fVentaMode" style="display:none" onchange="setVentaMode(this.value)">
+            <option value="mes">📅 Mensual</option>
+            <option value="sem">📅 Semanal</option>
+            <option value="ano">📅 Anual</option>
+          </select>
           <div class="frow">
             <label>Vista de ventas</label>
-            <select id="fVentaMode" onchange="setVentaMode(this.value)">
-              <option value="mes">📅 Mensual</option>
-              <option value="sem">📅 Semanal</option>
-              <option value="ano">📅 Anual</option>
-            </select>
+            <div class="csel" data-for="fVentaMode" id="fVentaModeCsel">
+              <div class="csel-val">📅 Mensual</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="mes">📅 Mensual</div>
+                <div class="csel-opt" data-value="sem">📅 Semanal</div>
+                <div class="csel-opt" data-value="ano">📅 Anual</div>
+              </div>
+            </div>
           </div>
 
+          <select id="fLoc2" style="display:none" onchange="filterArts()">
+            <option value="">Todos</option>
+            <option value="con">Con picking (alguno)</option>
+            <option value="sin">Sin picking (ninguno)</option>
+            <option value="central">Picking Central</option>
+            <option value="aux">Picking Auxiliar</option>
+            <option value="ambos">En ambos</option>
+          </select>
           <div class="frow">
-            <label>Tipo peso</label>
-            <select id="fPeso" onchange="filterArts()">
-              <option value="">Todos</option>
-              <option value="Voluminoso">🔴 Voluminoso</option>
-              <option value="Mediano">🟡 Mediano</option>
-              <option value="Pequeño">🟢 Pequeño</option>
-            </select>
+            <label>Picking</label>
+            <div class="csel" data-for="fLoc2" id="fLoc2Csel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="con">Con picking (alguno)</div>
+                <div class="csel-opt" data-value="sin">Sin picking (ninguno)</div>
+                <div class="csel-opt" data-value="central">Picking Central</div>
+                <div class="csel-opt" data-value="aux">Picking Auxiliar</div>
+                <div class="csel-opt" data-value="ambos">En ambos</div>
+              </div>
+            </div>
           </div>
 
-          <div class="frow">
-            <label>Localización</label>
-            <select id="fLoc2" onchange="filterArts()">
-              <option value="">Todos</option>
-              <option value="con">Con loc (alguna)</option>
-              <option value="sin">Sin loc (ninguna)</option>
-              <option value="central">Solo en Central</option>
-              <option value="aux">Solo en Auxiliar1</option>
-              <option value="ambos">En ambos</option>
-            </select>
-          </div>
-
+          <select id="fSurt" style="display:none" onchange="filterArts()">
+            <option value="">Todos</option>
+            <option value="S">En surtido</option>
+            <option value="NS">Fuera surtido</option>
+          </select>
           <div class="frow">
             <label>Surtido</label>
-            <select id="fSurt" onchange="filterArts()">
-              <option value="">Todos</option>
-              <option value="S">En surtido</option>
-              <option value="NS">Fuera surtido</option>
-            </select>
+            <div class="csel" data-for="fSurt" id="fSurtCsel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="S">En surtido</div>
+                <div class="csel-opt" data-value="NS">Fuera surtido</div>
+              </div>
+            </div>
           </div>
 
+
+          <select id="fRepo" style="display:none" onchange="filterArts()">
+            <option value="">Todos</option>
+            <option value="muy_alta">Muy alta reposición</option>
+            <option value="alta">Alta reposición</option>
+            <option value="media">Media reposición</option>
+            <option value="optima">Óptima reposición</option>
+          </select>
           <div class="frow">
-            <label>Vista rápida</label>
-            <select id="fVista" onchange="filterArts()">
-              <option value="">Normal</option>
-              <option value="prio">🔴 Prioritarios sin loc</option>
-            </select>
+            <label>Repo máx</label>
+            <div class="csel" data-for="fRepo" id="fRepoCsel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="muy_alta">Muy alta &lt;25% vta</div>
+                <div class="csel-opt" data-value="alta">Alta &lt;50% vta</div>
+                <div class="csel-opt" data-value="media">Media &lt;75% vta</div>
+                <div class="csel-opt" data-value="optima">Óptima ≥ vta</div>
+              </div>
+            </div>
+          </div>
+
+          <select id="fVol" style="display:none" onchange="filterArts()">
+            <option value="">Todos</option>
+            <option value="Muy voluminoso">Muy voluminoso</option>
+            <option value="Voluminoso">Voluminoso</option>
+            <option value="Estándar">Estándar</option>
+            <option value="Compacto">Compacto</option>
+            <option value="Muy compacto">Muy compacto</option>
+          </select>
+          <div class="frow">
+            <label>Volumen</label>
+            <div class="csel" data-for="fVol" id="fVolCsel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="Muy voluminoso">Muy voluminoso &gt;300 dm³</div>
+                <div class="csel-opt" data-value="Voluminoso">Voluminoso &gt;150 dm³</div>
+                <div class="csel-opt" data-value="Estándar">Estándar &gt;30 dm³</div>
+                <div class="csel-opt" data-value="Compacto">Compacto &gt;5 dm³</div>
+                <div class="csel-opt" data-value="Muy compacto">Muy compacto ≤5 dm³</div>
+              </div>
+            </div>
+          </div>
+
+          <select id="fPeso" style="display:none" onchange="filterArts()">
+            <option value="">Todos</option>
+            <option value="Muy pesado">Muy pesado</option>
+            <option value="Pesado">Pesado</option>
+            <option value="Medio">Medio</option>
+            <option value="Ligero">Ligero</option>
+            <option value="Muy ligero">Muy ligero</option>
+          </select>
+          <div class="frow">
+            <label>Peso</label>
+            <div class="csel" data-for="fPeso" id="fPesoCsel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="Muy pesado">Muy pesado &gt;25 kg</div>
+                <div class="csel-opt" data-value="Pesado">Pesado &gt;15 kg</div>
+                <div class="csel-opt" data-value="Medio">Medio &gt;5 kg</div>
+                <div class="csel-opt" data-value="Ligero">Ligero &gt;1 kg</div>
+                <div class="csel-opt" data-value="Muy ligero">Muy ligero ≤1 kg</div>
+              </div>
+            </div>
           </div>
 
           <button class="btn-gh" onclick="resetFilters()">↺ Resetear</button>
         </div>
       </div>
 
-      <div class="divr"></div>
-
       <!-- Filtros picking libre (visible solo en vista Libre) -->
       <div id="sb-libre" style="display:none">
         <div class="slbl">Filtros picking libre</div>
         <div style="display:flex;flex-direction:column;gap:7px">
+
           <div class="frow">
-            <label>Umbral mínimo libre</label>
-            <select id="freeThresholdSel" onchange="setFreeThreshold(this.value)">
-              <option value="25">+25% libre</option>
-              <option value="50" selected>+50% libre</option>
-              <option value="75">+75% libre</option>
-              <option value="100">+100% libre (vacío total)</option>
-            </select>
+            <label>% libre mínimo</label>
+            <div class="csel" id="freeThresholdCsel">
+              <div class="csel-val" id="freeThresholdCselVal">50% libre</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop" onclick="event.stopPropagation()" style="padding:12px 14px;min-width:170px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+                  <span style="font-size:11px;color:var(--mu)">Mover para filtrar</span>
+                  <span id="freeThresholdVal" style="font-size:12px;font-weight:700;color:var(--ac)">50%</span>
+                </div>
+                <input type="range" id="freeThresholdRange" class="libre-range"
+                  min="0" max="100" step="5" value="50" style="--pct:50%"
+                  oninput="document.getElementById('freeThresholdVal').textContent=this.value+'%';document.getElementById('freeThresholdCselVal').textContent=this.value+'% libre';this.style.setProperty('--pct',this.value+'%')"
+                  onchange="setFreeThreshold(this.value)">
+              </div>
+            </div>
           </div>
+
+          <select id="freeAlmacenSel" style="display:none" onchange="setFreeAlmacen(this.value)">
+            <option value="">Ambos</option>
+            <option value="CENTRAL">Central</option>
+            <option value="AUXILIAR1">Auxiliar1</option>
+          </select>
           <div class="frow">
             <label>Almacén</label>
-            <select id="freeAlmacenSel" onchange="setFreeAlmacen(this.value)">
-              <option value="">Ambos</option>
-              <option value="CENTRAL">Central</option>
-              <option value="AUXILIAR1">Auxiliar1</option>
-            </select>
+            <div class="csel" data-for="freeAlmacenSel">
+              <div class="csel-val">Ambos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Ambos</div>
+                <div class="csel-opt" data-value="CENTRAL">Central</div>
+                <div class="csel-opt" data-value="AUXILIAR1">Auxiliar1</div>
+              </div>
+            </div>
           </div>
+
+          <select id="freeTypeSel" style="display:none" onchange="setFreeType(this.value)">
+            <option value="">Ambos</option>
+            <option value="picking">Picking</option>
+            <option value="suelo">Suelo</option>
+            <option value="suelo-pallet">Suelo + pallet libre</option>
+          </select>
+          <div class="frow">
+            <label>Tipo de posición</label>
+            <div class="csel" data-for="freeTypeSel">
+              <div class="csel-val">Ambos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Ambos</div>
+                <div class="csel-opt" data-value="picking">Picking</div>
+                <div class="csel-opt" data-value="suelo">Suelo</div>
+                <div class="csel-opt" data-value="suelo-pallet">Suelo + pallet libre</div>
+              </div>
+            </div>
+          </div>
+
+          <select id="freePaletSel" style="display:none" onchange="setFreePalet(this.value)">
+            <option value="">Ambos</option>
+            <option value="Euro">Euro</option>
+            <option value="IKEA">IKEA</option>
+          </select>
+          <div class="frow">
+            <label>Tipo palet</label>
+            <div class="csel" data-for="freePaletSel">
+              <div class="csel-val">Ambos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Ambos</div>
+                <div class="csel-opt" data-value="Euro">Euro</div>
+                <div class="csel-opt" data-value="IKEA">IKEA</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Filtros artículos no surtidos (visible solo en vista Bye) -->
+      <div id="sb-bye" style="display:none">
+        <div class="slbl">Filtros no surtidos</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+
+          <select id="byeAlmacenSel" style="display:none" onchange="setByeAlmacen(this.value)">
+            <option value="">Ambos</option>
+            <option value="CENTRAL">Central</option>
+            <option value="AUXILIAR1">Auxiliar1</option>
+          </select>
+          <div class="frow">
+            <label>Almacén</label>
+            <div class="csel" data-for="byeAlmacenSel">
+              <div class="csel-val">Ambos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Ambos</div>
+                <div class="csel-opt" data-value="CENTRAL">Central</div>
+                <div class="csel-opt" data-value="AUXILIAR1">Auxiliar1</div>
+              </div>
+            </div>
+          </div>
+
+          <select id="byeStockSel" style="display:none" onchange="setByeStock(this.value)">
+            <option value="">Todos</option>
+            <option value="con">Con stock</option>
+            <option value="sin">Sin stock</option>
+          </select>
+          <div class="frow">
+            <label>Stock disponible</label>
+            <div class="csel" data-for="byeStockSel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="con">Con stock</div>
+                <div class="csel-opt" data-value="sin">Sin stock</div>
+              </div>
+            </div>
+          </div>
+
+          <select id="byePVSel" style="display:none" onchange="setByePV(this.value)">
+            <option value="">Todos</option>
+            <option value="con">Con PV</option>
+            <option value="sin">Sin PV</option>
+          </select>
+          <div class="frow">
+            <label>Pendiente por venir</label>
+            <div class="csel" data-for="byePVSel">
+              <div class="csel-val">Todos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Todos</div>
+                <div class="csel-opt" data-value="con">Con PV</div>
+                <div class="csel-opt" data-value="sin">Sin PV</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="frow">
+            <label>Fecha inicio (fin venta desde)</label>
+            <input type="date" id="byeFromInput" style="font-size:12px;padding:5px 7px;width:100%;box-sizing:border-box"
+              onchange="setByeDateFrom(this.value)">
+            <div id="byeFromLabel" class="fecha-sentinel-lbl" style="display:none">
+              <span id="byeFromLabelText"></span>
+              <button onclick="clearByeDate('From')">×</button>
+            </div>
+            <div style="display:flex;gap:3px;margin-top:3px">
+              <button class="btn-fecha-rel" id="byeFromAyer"   onclick="setByeDate('From','TODAY-1')">Ayer</button>
+              <button class="btn-fecha-rel" id="byeFromManana" onclick="setByeDate('From','TODAY+1')">Mañana</button>
+            </div>
+          </div>
+
+          <div class="frow">
+            <label>Fecha fin (fin venta hasta)</label>
+            <input type="date" id="byeToInput" style="font-size:12px;padding:5px 7px;width:100%;box-sizing:border-box"
+              onchange="setByeDateTo(this.value)">
+            <div id="byeToLabel" class="fecha-sentinel-lbl" style="display:none">
+              <span id="byeToLabelText"></span>
+              <button onclick="clearByeDate('To')">×</button>
+            </div>
+            <div style="display:flex;gap:3px;margin-top:3px">
+              <button class="btn-fecha-rel" id="byeToAyer"   onclick="setByeDate('To','TODAY-1')">Ayer</button>
+              <button class="btn-fecha-rel" id="byeToManana" onclick="setByeDate('To','TODAY+1')">Mañana</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div id="sb-pesados" style="display:none">
+        <div class="slbl">Filtros pesados</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+
+          <select id="pesadosAlmacenSel" style="display:none" onchange="setPesadosAlmacen(this.value)">
+            <option value="">Ambos</option>
+            <option value="CENTRAL">Central</option>
+            <option value="AUXILIAR1">Auxiliar1</option>
+          </select>
+          <div class="frow">
+            <label>Almacén</label>
+            <div class="csel" data-for="pesadosAlmacenSel" id="pesadosAlmacenCsel">
+              <div class="csel-val">Ambos</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop">
+                <div class="csel-opt csel-opt-sel" data-value="">Ambos</div>
+                <div class="csel-opt" data-value="CENTRAL">Central</div>
+                <div class="csel-opt" data-value="AUXILIAR1">Auxiliar1</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="frow">
+            <label>Peso mínimo</label>
+            <div class="csel" id="pesadosPesoCsel">
+              <div class="csel-val" id="pesadosPesoCselVal">0 kg (sin filtro)</div>
+              <div class="csel-arrow">▾</div>
+              <div class="csel-drop" onclick="event.stopPropagation()" style="padding:12px 14px;min-width:170px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+                  <span style="font-size:11px;color:var(--mu)">Mover para filtrar</span>
+                  <span id="pesadosPesoVal" style="font-size:12px;font-weight:700;color:var(--ac)">0 kg</span>
+                </div>
+                <input type="range" id="pesadosPesoRange" class="libre-range"
+                  min="0" max="60" step="5" value="0" style="--pct:0%"
+                  oninput="
+                    const v=this.value;
+                    document.getElementById('pesadosPesoVal').textContent=v+' kg';
+                    document.getElementById('pesadosPesoCselVal').textContent=v>0?'≥'+v+' kg':'0 kg (sin filtro)';
+                    this.style.setProperty('--pct',(v/60*100)+'%')"
+                  onchange="setPesadosPesoMin(this.value)">
+              </div>
+            </div>
+          </div>
+
+          <div class="frow">
+            <label>Venta mínima (uds/mes)</label>
+            <input type="number" min="0" max="9999" id="pesadosRotInput"
+              placeholder="0 (sin filtro)" value=""
+              style="font-size:12px;padding:5px 7px;width:100%;box-sizing:border-box"
+              oninput="setPesadosRotMin(this.value)">
+          </div>
+
         </div>
       </div>
 
@@ -266,18 +599,27 @@
 
       <!-- PANEL: Mapa del almacén -->
       <div class="panel act" id="p-mapa">
-        <div class="map-hdr">
+        <div class="map-hdr" id="mapHdrMap">
           <span class="map-title">Mapa del almacén — Planta</span>
           <span class="map-sep">·</span>
           <span class="map-sub">Vista de planta · Click para ver estantería</span>
           <span id="mapSearchInfo" class="map-search-info"></span>
         </div>
+        <div class="map-hdr" id="mapHdrShelf" style="display:none">
+          <button class="adp-back" onclick="backFromShelf()">← Volver</button>
+          <span class="map-sep">·</span>
+          <span class="map-title" id="shelfInlineTitle">—</span>
+          <span class="map-sep">·</span>
+          <span class="map-sub" id="shelfInlineSub">—</span>
+        </div>
         <div class="map-body">
           <!-- Área del mapa (izquierda, con scroll) -->
-          <div class="map-area">
+          <div class="map-area" id="mapArea">
             <div id="layoutTabs"></div>
             <div id="mapCont"></div>
           </div>
+          <!-- Área inline del shelf: flex:1 como map-area, overflow:hidden (shelfScroll maneja su propio scroll) -->
+          <div class="map-area" id="shelfInline" style="display:none;overflow:hidden;padding:16px 20px"></div>
           <!-- Panel lateral derecho: buscador + resultados / tarjeta -->
           <div class="map-side" id="mapSidePanel">
             <div class="msp-search">
@@ -296,6 +638,7 @@
 
       <!-- PANEL: Artículos -->
       <div class="panel" id="p-arts">
+        <div class="cards" id="artsCards"></div>
         <div class="toolbar">
           <input class="sbox" type="text" placeholder="Buscar código, descripción, localización..." id="sbox" oninput="filterArts()">
           <span class="rowcnt-lbl" id="rowcnt"></span>
@@ -329,165 +672,55 @@
         <div class="tw sc"  id="pesadosTbl"></div>
       </div>
 
-      <!-- PANEL: Ajustes -->
-      <div class="panel" id="p-ajustes">
-        <div class="cfg-wrap">
-
-          <div class="cfg-header">
-            <div class="cfg-title">⚙️ Ajustes</div>
-            <div class="cfg-sub">Configura los umbrales y parámetros del análisis. Los cambios se aplican al instante sin recargar los datos.</div>
-          </div>
-
-          <div class="cfg-grid">
-
-            <!-- 1. Top N mayor rotación en mapa -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">🔴</div>
-              <div class="cfg-card-title">Top N mayor rotación en mapa</div>
-              <div class="cfg-card-desc">
-                Número de localizaciones con <strong>mayor venta mensual</strong> que se resaltan en rojo
-                en el mapa, por cada almacén (Central y Auxiliar1) y por tipo (suelo y picking).
-                Útil para identificar los artículos más críticos y asegurarse de que tienen
-                la mejor ubicación posible.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="topNHigh" data-val="3" onclick="setCfgOpt(this)">Top 3</button>
-                <button class="cfg-opt act" data-cfg="topNHigh" data-val="5" onclick="setCfgOpt(this)">Top 5</button>
-                <button class="cfg-opt" data-cfg="topNHigh" data-val="10" onclick="setCfgOpt(this)">Top 10</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (nº localizaciones)</label>
-                <input type="number" min="1" max="50" id="custom-topNHigh"
-                  placeholder="ej. 7" oninput="setCfgCustom('topNHigh', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-topNHigh">5</strong> localizaciones</div>
-            </div>
-
-            <!-- 2. Top N menor rotación en mapa -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">🟣</div>
-              <div class="cfg-card-title">Top N menor rotación en mapa</div>
-              <div class="cfg-card-desc">
-                Número de localizaciones con <strong>menor venta mensual</strong> que se resaltan en violeta
-                en el mapa, por cada almacén (Central y Auxiliar1) y por tipo (suelo y picking).
-                Útil para identificar artículos candidatos a liberar espacio.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="topN" data-val="3" onclick="setCfgOpt(this)">Top 3</button>
-                <button class="cfg-opt act" data-cfg="topN" data-val="5" onclick="setCfgOpt(this)">Top 5</button>
-                <button class="cfg-opt" data-cfg="topN" data-val="10" onclick="setCfgOpt(this)">Top 10</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (nº localizaciones)</label>
-                <input type="number" min="1" max="50" id="custom-topN"
-                  placeholder="ej. 7" oninput="setCfgCustom('topN', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-topN">5</strong> localizaciones</div>
-            </div>
-
-            <!-- 3. Espacio disponible en picking libre -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">🟢</div>
-              <div class="cfg-card-title">Espacio disponible en picking libre</div>
-              <div class="cfg-card-desc">
-                Porcentaje mínimo de capacidad <strong>libre</strong> que debe tener una localización
-                para aparecer en la sección "Picking libre". Una localización al 100% libre es una
-                posición completamente vacía. Una al 50% libre tiene artículos pero aún tiene
-                capacidad disponible equivalente a la mitad de su volumen total.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt act" data-cfg="espLibre" data-val="50" onclick="setCfgOpt(this)">+50% libre</button>
-                <button class="cfg-opt" data-cfg="espLibre" data-val="75" onclick="setCfgOpt(this)">+75% libre</button>
-                <button class="cfg-opt" data-cfg="espLibre" data-val="100" onclick="setCfgOpt(this)">+100% libre</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (%)</label>
-                <input type="number" min="1" max="100" id="custom-espLibre"
-                  placeholder="ej. 60" oninput="setCfgCustom('espLibre', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-espLibre">50</strong>% libre</div>
-            </div>
-
-            <!-- 4. Límite manipulación pesada -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">⚖️</div>
-              <div class="cfg-card-title">Límite manipulación pesada</div>
-              <div class="cfg-card-desc">
-                Peso máximo en kg a partir del cual un artículo requiere <strong>manipulación especial</strong>.
-                Los artículos que superen este límite, tengan alta rotación y no tengan posición de suelo
-                aparecerán marcados en naranja en el mapa y en la sección "Revisar localización".
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="pesado" data-val="15" onclick="setCfgOpt(this)">15 kg</button>
-                <button class="cfg-opt act" data-cfg="pesado" data-val="20" onclick="setCfgOpt(this)">20 kg</button>
-                <button class="cfg-opt" data-cfg="pesado" data-val="25" onclick="setCfgOpt(this)">25 kg</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (kg)</label>
-                <input type="number" min="1" max="999" id="custom-pesado"
-                  placeholder="ej. 18" oninput="setCfgCustom('pesado', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-pesado">20</strong> kg</div>
-            </div>
-
-            <!-- 5. Umbral de rotación artículos pesados -->
-            <div class="cfg-card">
-              <div class="cfg-card-icon">📦</div>
-              <div class="cfg-card-title">Umbral de rotación artículos pesados</div>
-              <div class="cfg-card-desc">
-                Define a partir de cuántas unidades vendidas al mes un artículo se considera de <strong>alta rotación</strong>.
-                Afecta a: prioridad de artículos sin localización, detección de manipulación pesada,
-                colores en tabla y mapa, y contador "Sin loc" de la cabecera.
-              </div>
-              <div class="cfg-options">
-                <button class="cfg-opt" data-cfg="rotacion" data-val="10" onclick="setCfgOpt(this)">10 uds</button>
-                <button class="cfg-opt" data-cfg="rotacion" data-val="15" onclick="setCfgOpt(this)">15 uds</button>
-                <button class="cfg-opt act" data-cfg="rotacion" data-val="20" onclick="setCfgOpt(this)">20 uds</button>
-                <button class="cfg-opt" data-cfg="rotacion" data-val="25" onclick="setCfgOpt(this)">25 uds</button>
-              </div>
-              <div class="cfg-custom">
-                <label>Personalizado (uds/mes)</label>
-                <input type="number" min="1" max="9999" id="custom-rotacion"
-                  placeholder="ej. 30" oninput="setCfgCustom('rotacion', this.value)">
-              </div>
-              <div class="cfg-current">Valor activo: <strong id="disp-rotacion">20</strong> uds/mes</div>
-            </div>
-
-          </div><!-- /cfg-grid -->
-
-          <div class="cfg-footer">
-            <button class="cfg-btn-reset" onclick="resetConfig()">↺ Restaurar valores por defecto</button>
-            <button class="cfg-btn-apply" onclick="applyConfig()">✓ Aplicar cambios</button>
-          </div>
-
-        </div><!-- /cfg-wrap -->
+      <!-- PANEL: Ficha de artículo -->
+      <div class="panel" id="p-artdetail">
+        <div class="map-hdr">
+          <button class="adp-back" onclick="closeArtDetail()">← Volver</button>
+          <span class="map-sep">·</span>
+          <span class="map-title">Información completa del artículo</span>
+          <span class="map-sep">·</span>
+          <span class="map-sub" id="adpArtId"></span>
+        </div>
+        <div class="adp-body sc" id="adpBody"></div>
       </div>
+
+      <!-- PANEL: Ajustes -->
+    </div><!-- /content -->
   </div><!-- /layout -->
 
   <!-- Leyenda flotante — esquina inferior izquierda (interactiva) -->
   <div class="map-legend-float" id="mapLegendFloat">
     <div class="map-legend-title">Leyenda · filtros de mapa</div>
-    <div class="leg leg-static">
-      <div class="ldot cs-o"></div><span class="leg-label">Ocupado</span>
+    <div class="leg" data-layer="pallet" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-pallet"></div><span class="leg-label">Pallet libre en suelo</span>
     </div>
+    <div class="leg" data-layer="low" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-low"></div>
+      <span class="leg-label">Menor vta.</span>
+      <div class="leg-stepper" onclick="event.stopPropagation()">
+        <button onclick="stepCfg('topN',-1)">‹</button>
+        <span id="disp-topN">5</span>
+        <button onclick="stepCfg('topN',1)">›</button>
+      </div>
+    </div>
+    <div class="leg" data-layer="high" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-high"></div>
+      <span class="leg-label">Mayor vta.</span>
+      <div class="leg-stepper" onclick="event.stopPropagation()">
+        <button onclick="stepCfg('topNHigh',-1)">‹</button>
+        <span id="disp-topNHigh">5</span>
+        <button onclick="stepCfg('topNHigh',1)">›</button>
+      </div>
+    </div>
+    <div class="leg" data-layer="ns" onclick="toggleLegendLayer(this)">
+      <div class="leg-check">✓</div><div class="ldot x-ns"></div><span class="leg-label">Fuera de surtido (NS)</span>
+    </div>
+    <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
     <div class="leg" data-layer="libre" onclick="toggleLegendLayer(this)">
       <div class="leg-check">✓</div><div class="ldot cs-f"></div><span class="leg-label">Libre</span>
     </div>
-    <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
-    <div class="leg" data-layer="low" onclick="toggleLegendLayer(this)">
-      <div class="leg-check">✓</div><div class="ldot x-low"></div><span class="leg-label">🟣 Top menor rotación</span>
-    </div>
-    <div class="leg" data-layer="high" onclick="toggleLegendLayer(this)">
-      <div class="leg-check">✓</div><div class="ldot x-high"></div><span class="leg-label">🔴 Top mayor rotación</span>
-    </div>
-    <div class="leg" data-layer="pallet" onclick="toggleLegendLayer(this)">
-      <div class="leg-check">✓</div><div class="ldot x-pallet"></div><span class="leg-label">🟦 Pallet libre en suelo</span>
-    </div>
-    <div class="leg" data-layer="ns" onclick="toggleLegendLayer(this)">
-      <div class="leg-check">✓</div><div class="ldot x-ns"></div><span class="leg-label">🔘 Fuera de surtido (NS)</span>
-    </div>
-    <div class="leg" style="cursor:default;opacity:.6;pointer-events:none">
-      <div class="leg-check" style="visibility:hidden"></div><div class="ldot layout-special-dot"></div><span class="leg-label">Zona especial</span>
+    <div class="leg leg-static">
+      <div class="ldot cs-o"></div><span class="leg-label">Ocupado</span>
     </div>
     <div style="height:1px;background:var(--win-border-dark);margin:5px 0;opacity:.5"></div>
     <div class="leg leg-heat" data-layer="heatmap" onclick="toggleLegendLayer(this)">
@@ -499,7 +732,7 @@
 
   <!-- Crédito de autor — esquina inferior derecha -->
   <div class="app-credit">
-    Gestor Picking IKEA <span class="app-version">v0.48</span>
+    Gestor Picking IKEA <span class="app-version">v0.93</span>
     <span class="app-by">by Daniel Coso</span>
   </div>
 
@@ -524,14 +757,233 @@
 
 
 <!-- ══════════════════════════════════════════
+     MODAL GESTIÓN DE USUARIOS (solo admin)
+     ══════════════════════════════════════════ -->
+<div id="usersOverlay" onclick="if(event.target===this)closeUsersPanel()">
+  <div class="users-panel">
+    <div class="users-hdr">
+      <div class="users-title">👥 Gestión de usuarios</div>
+      <button class="shelf-close" onclick="closeUsersPanel()">✕</button>
+    </div>
+
+    <!-- Formulario nuevo usuario -->
+    <div class="users-new">
+      <div class="users-new-title">Nuevo usuario</div>
+      <div class="users-new-row">
+        <input class="login-input" type="text"     id="newUsername" placeholder="Usuario"     autocomplete="off">
+        <input class="login-input" type="password" id="newPassword" placeholder="Contraseña"  autocomplete="off">
+        <select class="login-input" id="newRole">
+          <option value="user">Usuario</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button class="up-btn" onclick="createUser()" style="white-space:nowrap;padding:8px 18px;font-size:13px">+ Crear</button>
+      </div>
+      <div class="users-new-error" id="usersError"></div>
+    </div>
+
+    <!-- Lista de usuarios -->
+    <div class="users-list" id="usersList"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      SCRIPTS (orden importante)
      ══════════════════════════════════════════ -->
-<script src="js/state.js"></script>
-<script src="js/data.js"></script>
-<script src="js/map.js"></script>
-<script src="js/shelf.js"></script>
-<script src="js/views.js"></script>
-<script src="js/app.js"></script>
+<script>
+  /* ── Modo oscuro / claro ── */
+  (function () {
+    // Aplicar tema guardado lo antes posible (evita flash)
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+
+  function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      html.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+      document.getElementById('themeToggle').textContent = '🌙';
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+      document.getElementById('themeToggle').textContent = '☀️';
+    }
+  }
+
+  // Sincronizar icono al cargar
+  document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('themeToggle');
+    if (btn && document.documentElement.getAttribute('data-theme') === 'dark') {
+      btn.textContent = '☀️';
+    }
+    initCselAll();
+  });
+
+  /* ── Custom selects ── */
+  function initCselAll() {
+    document.querySelectorAll('.csel').forEach(initCsel);
+    // Cerrar al hacer clic fuera
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.csel') && !e.target.closest('.csel-drop')) {
+        document.querySelectorAll('.csel.csel-open').forEach(c => c.classList.remove('csel-open'));
+        _closeCselPortal();
+      }
+    });
+  }
+
+  // Dropdown actualmente en el body (portal)
+  let _cselPortalDrop = null;
+  let _cselPortalOwner = null;
+
+  function _closeCselPortal() {
+    if (_cselPortalDrop && _cselPortalOwner) {
+      _cselPortalOwner.appendChild(_cselPortalDrop);
+      _cselPortalDrop.style.cssText = '';
+    }
+    _cselPortalDrop = null;
+    _cselPortalOwner = null;
+  }
+
+  function _openCselPortal(csel, drop) {
+    _closeCselPortal();
+    const rect = csel.getBoundingClientRect();
+    document.body.appendChild(drop);
+    drop.style.position   = 'fixed';
+    drop.style.top        = (rect.bottom + 2) + 'px';
+    drop.style.left       = rect.left + 'px';
+    drop.style.width      = rect.width + 'px';
+    drop.style.display    = 'block';
+    drop.style.zIndex     = '99999';
+    _cselPortalDrop  = drop;
+    _cselPortalOwner = csel;
+  }
+
+  function initCsel(csel) {
+    const targetId = csel.getAttribute('data-for');
+    const nativeSel = document.getElementById(targetId);
+    const valEl  = csel.querySelector('.csel-val');
+    const drop   = csel.querySelector('.csel-drop');
+
+    // Abrir/cerrar al pulsar el trigger
+    csel.addEventListener('click', function (e) {
+      if (e.target.closest('.csel-opt')) return;
+      const wasOpen = csel.classList.contains('csel-open');
+      // Cerrar todos
+      document.querySelectorAll('.csel.csel-open').forEach(c => c.classList.remove('csel-open'));
+      _closeCselPortal();
+      if (!wasOpen) {
+        csel.classList.add('csel-open');
+        _openCselPortal(csel, drop);
+      }
+      e.stopPropagation();
+    });
+
+    // Seleccionar opción
+    drop.querySelectorAll('.csel-opt').forEach(function (opt) {
+      opt.addEventListener('click', function (e) {
+        const val  = opt.getAttribute('data-value');
+        const text = opt.textContent;
+
+        valEl.textContent = text;
+        drop.querySelectorAll('.csel-opt').forEach(o => o.classList.remove('csel-opt-sel'));
+        opt.classList.add('csel-opt-sel');
+        csel.classList.remove('csel-open');
+        _closeCselPortal();
+
+        nativeSel.value = val;
+        nativeSel.dispatchEvent(new Event('change'));
+
+        e.stopPropagation();
+      });
+    });
+  }
+
+  /* Fijar un csel a un valor concreto (para restaurar filtros desde tarjetas) */
+  function setCselValue(targetId, value) {
+    const nativeSel = document.getElementById(targetId);
+    const csel = document.querySelector('.csel[data-for="' + targetId + '"]');
+    if (!nativeSel || !csel) return;
+    nativeSel.value = value;
+    let found = false;
+    csel.querySelectorAll('.csel-opt').forEach(function(o) {
+      const match = o.getAttribute('data-value') === value;
+      o.classList.toggle('csel-opt-sel', match);
+      if (match) { csel.querySelector('.csel-val').textContent = o.textContent; found = true; }
+    });
+    if (!found) resetCsel(targetId);
+  }
+
+  /* Resetear un csel a su primera opción */
+  function resetCsel(targetId) {
+    const csel = document.querySelector('.csel[data-for="' + targetId + '"]');
+    if (!csel) return;
+    const firstOpt = csel.querySelector('.csel-opt');
+    if (!firstOpt) return;
+    csel.querySelector('.csel-val').textContent = firstOpt.textContent;
+    csel.querySelectorAll('.csel-opt').forEach(o => o.classList.remove('csel-opt-sel'));
+    firstOpt.classList.add('csel-opt-sel');
+  }
+
+  /* Wrapper de resetFilters que también resetea los custom selects */
+  document.addEventListener('DOMContentLoaded', function () {
+    const _orig = window.resetFilters;
+    if (_orig) {
+      window.resetFilters = function () {
+        _orig();
+        ['fVentaMode','fPeso','fLoc2','fSurt','fVista'].forEach(resetCsel);
+      };
+    }
+  });
+</script>
+<script src="js/state.js?v=3"></script>
+<script src="js/auth.js?v=5"></script>
+<script src="js/data.js?v=4"></script>
+<script src="js/map.js?v=12"></script>
+<script src="js/shelf.js?v=3"></script>
+<script src="js/views.js?v=7"></script>
+<script src="js/app.js?v=4"></script>
+
+<!-- Toast de aviso (no bloqueante) -->
+<div id="appToast" style="display:none;position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9100;pointer-events:none">
+  <div class="app-toast-inner"></div>
+</div>
+
+<!-- Confirm modal genérico -->
+<div id="appConfirm" onclick="closeAppConfirm()" style="display:none;position:fixed;inset:0;z-index:9050;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div class="lcard-modal-inner" onclick="event.stopPropagation()" style="max-width:340px">
+    <div class="lcard-modal-title" id="appConfirmTitle">¿Confirmar?</div>
+    <div id="appConfirmMsg" style="font-size:13px;color:var(--mu);margin-bottom:20px;line-height:1.5"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="lcard-btn-cancel" onclick="closeAppConfirm()">Cancelar</button>
+      <button class="lcard-btn-danger" id="appConfirmOk">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: nueva tarjeta personalizada de Picking libre -->
+<div id="libreCardModal" onclick="closeLibreCardModal()"
+  style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div class="lcard-modal-inner" onclick="event.stopPropagation()">
+    <div class="lcard-modal-title">Nueva tarjeta</div>
+    <div class="lcard-modal-row">
+      <label class="lcard-modal-lbl">Nombre</label>
+      <input id="lcardName" type="text" maxlength="40" placeholder="Ej: Suelo Central vacío"
+        onkeydown="if(event.key==='Enter')confirmLibreCard()">
+    </div>
+    <div class="lcard-modal-row">
+      <label class="lcard-modal-lbl">Icono</label>
+      <div id="lcardIcons" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+    <div class="lcard-modal-hint">Se guardarán los filtros activos del sidebar en este momento.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="lcard-btn-cancel" onclick="closeLibreCardModal()">Cancelar</button>
+      <button class="lcard-btn-ok" onclick="confirmLibreCard()">Guardar tarjeta</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

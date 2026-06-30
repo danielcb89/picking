@@ -1,0 +1,8 @@
+Definir tipos de artículos actuales x peso de artículos
+
+Definir estanterías en pasillos pallet Euro o pallet IKEA para luego poder filtrar en huecos.
+
+
+Hay manera que los bultos aparte de mostrarse en peso se ponga? Entender
+
+
