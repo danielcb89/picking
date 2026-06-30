@@ -4,41 +4,91 @@
 
 const CACHE_KEY = 'gp_cache_v1';
 
-function saveToCache() {
+// ── IndexedDB helpers (sin límite de tamaño) ─────────────────────
+function _idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('picking_ikea', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('cache');
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+async function _idbSet(key, value) {
+  const db = await _idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('cache', 'readwrite');
+    tx.objectStore('cache').put(value, key);
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+async function _idbGet(key) {
+  const db = await _idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx  = db.transaction('cache', 'readonly');
+    const req = tx.objectStore('cache').get(key);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+async function _idbDel(key) {
+  const db = await _idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('cache', 'readwrite');
+    tx.objectStore('cache').delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function saveToCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ selectedStore, ARTS, ts: Date.now() }));
+    await _idbSet(CACHE_KEY, { selectedStore, ARTS, ts: Date.now() });
   } catch(e) {
-    console.warn('Cache no disponible:', e.message);
+    console.warn('Cache no guardado:', e.message);
   }
 }
 
 async function loadFromCache() {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return false;
-    const d = JSON.parse(raw);
-    if (!d.selectedStore || !d.ARTS?.length) return false;
+    const d = await _idbGet(CACHE_KEY);
+    console.log('[cache] idb get:', d ? `store=${d.selectedStore} arts=${d.ARTS?.length}` : 'vacío');
+    if (!d?.selectedStore || !d.ARTS?.length) return false;
     selectedStore = d.selectedStore;
     ARTS          = d.ARTS;
-    const ubRows  = await fetchStoreFile();
+    ARTS.forEach(a => {
+      if (a.es) a.es = new Date(a.es);
+      if (a.ss) a.ss = new Date(a.ss);
+    });
+    console.log('[cache] fetchStoreFile...');
+    const ubRows = await fetchStoreFile();
+    console.log('[cache] ubRows:', ubRows?.length);
     processUbicaciones(ubRows);
     calcAlerts();
     buildMaps();
     return true;
   } catch(e) {
-    localStorage.removeItem(CACHE_KEY);
+    console.error('[cache] error en loadFromCache:', e);
+    await _idbDel(CACHE_KEY).catch(() => {});
     return false;
   }
 }
 
-function cambiarTienda() {
-  localStorage.removeItem(CACHE_KEY);
-  location.reload();
+async function saveToCache() {
+  try {
+    await _idbSet(CACHE_KEY, { selectedStore, ARTS, ts: Date.now() });
+    console.log('[cache] guardado en idb, arts:', ARTS.length);
+  } catch(e) {
+    console.warn('[cache] error guardando:', e.message);
+  }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
-  if (await loadFromCache()) showApp();
-});
+async function cambiarTienda() {
+  // ponytail: solo borra el caché de datos, no la sesión de usuario
+  await _idbDel(CACHE_KEY).catch(() => {});
+  document.getElementById('app').style.display          = 'none';
+  document.getElementById('uploadScreen').style.display = '';
+}
 
 
 // ── PROCESADO PRINCIPAL ──────────────────────────────────────────
@@ -60,6 +110,13 @@ async function startProcessing() {
     const ubRows  = await fetchStoreFile();
 
     setP(50,  'Procesando artículos...');
+    // ponytail: validar columnas mínimas antes de procesar
+    if (!artRows.length) throw new Error('El archivo de artículos está vacío.');
+    const firstRow = artRows[0];
+    const keys = Object.keys(firstRow).map(k => k.toLowerCase());
+    const hasArtcod = keys.some(k => ['artcod','codigo','cod','article','item'].includes(k));
+    const hasDescr = keys.some(k => ['descr','description','descripcion','desc','nombre'].includes(k));
+    if (!hasArtcod || !hasDescr) throw new Error(`El archivo no tiene el formato correcto. Columnas encontradas: ${Object.keys(firstRow).join(', ')}`);
     processArticles(artRows);
 
     setP(70,  'Procesando ubicaciones...');
@@ -72,7 +129,11 @@ async function startProcessing() {
     buildMaps();
 
     setP(98,  'Guardando sesión...');
-    saveToCache();
+    // ponytail: solo guardar si hay artículos válidos con código
+    if (ARTS.length > 0) {
+      await saveToCache();
+      savePreferences(selectedStore, 'mapa', CFG);
+    }
 
     setP(100, '¡Listo!');
     setTimeout(showApp, 300);
@@ -112,8 +173,7 @@ function showApp() {
   renderPesados();
   renderLibre();
   renderBye();
-  filteredArts = [...ARTS];
-  sortArtsData();
+  filterArts();
 
   // Renderizar mapa cuando el contenedor tenga tamaño real
   const mapArea = document.getElementById('mapCont')?.parentElement;
@@ -145,73 +205,36 @@ function switchLayout(idx) {
 
 // ── NAVEGACIÓN ───────────────────────────────────────────────────
 
-const VIEWS = ['mapa', 'arts', 'libre', 'bye', 'pesados', 'ajustes'];
+const VIEWS = ['mapa', 'arts', 'libre', 'bye', 'pesados'];
 
 function gotoView(v) {
+  document.getElementById('p-artdetail')?.classList.remove('act');
   VIEWS.forEach(x => {
     document.getElementById('p-' + x).classList.toggle('act', x === v);
     document.getElementById('n-' + x).classList.toggle('act', x === v);
   });
-  document.getElementById('sb-arts').style.display  = v === 'arts'  ? 'block' : 'none';
-  document.getElementById('sb-libre').style.display = v === 'libre' ? 'block' : 'none';
-  if (v === 'arts')    renderArtsTable();
-  if (v === 'ajustes') renderConfigPanel();
+  document.getElementById('sb-arts').style.display    = v === 'arts'    ? 'block' : 'none';
+  document.getElementById('sb-libre').style.display   = v === 'libre'   ? 'block' : 'none';
+  document.getElementById('sb-bye').style.display     = v === 'bye'     ? 'block' : 'none';
+  document.getElementById('sb-pesados').style.display = v === 'pesados' ? 'block' : 'none';
+  if (v === 'arts') { renderArtsCards(); renderArtsTable(); }
+  if (v === 'mapa') {
+    // Si había un shelf inline abierto, cerrarlo antes de renderizar el mapa
+    if (document.getElementById('shelfInline')?.style.display !== 'none') closeShelfDetail();
+    renderLayoutMap(currentLayout);
+  }
+  savePreferences(selectedStore, v, CFG);
 }
 
 
 // ── CONFIGURACIÓN ────────────────────────────────────────────────
 
-function renderConfigPanel() {
-  ['rotacion','pesado','topN','topNHigh','espLibre'].forEach(key => {
-    const val = CFG[key];
-    const disp = document.getElementById('disp-' + key);
-    if (disp) disp.textContent = val;
-    document.querySelectorAll(`.cfg-opt[data-cfg="${key}"]`).forEach(btn => {
-      btn.classList.toggle('act', parseInt(btn.getAttribute('data-val')) === val);
-    });
-    const inp = document.getElementById('custom-' + key);
-    if (inp) inp.value = '';
-  });
-}
-
-function setCfgOpt(btn) {
-  const key = btn.getAttribute('data-cfg');
-  const val = parseInt(btn.getAttribute('data-val'));
-  CFG[key] = val;
-  document.querySelectorAll(`.cfg-opt[data-cfg="${key}"]`).forEach(b =>
-    b.classList.toggle('act', b === btn)
-  );
-  const inp = document.getElementById('custom-' + key);
-  if (inp) inp.value = '';
+function stepCfg(key, delta) {
+  CFG[key] = Math.max(1, Math.min(50, (CFG[key] || 5) + delta));
   const disp = document.getElementById('disp-' + key);
-  if (disp) disp.textContent = val;
-}
-
-function setCfgCustom(key, raw) {
-  const val = parseInt(raw);
-  if (isNaN(val) || val < 0) return;
-  CFG[key] = val;
-  document.querySelectorAll(`.cfg-opt[data-cfg="${key}"]`).forEach(b => b.classList.remove('act'));
-  const disp = document.getElementById('disp-' + key);
-  if (disp) disp.textContent = val;
-}
-
-function applyConfig() {
+  if (disp) disp.textContent = CFG[key];
   calcAlerts();
   buildMaps();
-  freeThreshold = CFG.espLibre;
   renderLayoutMap(currentLayout);
-  renderPesados();
-  renderLibre();
-  renderBye();
-  const btn = document.querySelector('.cfg-btn-apply');
-  const orig = btn.textContent;
-  btn.textContent = '✓ Aplicado';
-  btn.style.background = 'linear-gradient(180deg,#2e7d32 0%,#1b5e20 100%)';
-  setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1800);
-}
-
-function resetConfig() {
-  CFG = { ...CFG_DEFAULTS };
-  renderConfigPanel();
+  savePreferences(selectedStore, 'mapa', CFG);
 }

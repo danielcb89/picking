@@ -58,7 +58,7 @@ function checkReadyToStart() {
 // - Resto de pestañas → layouts de planta (nombre de pestaña = título del layout)
 async function fetchStoreFile() {
   const store  = STORE_FILES[selectedStore];
-  const resp   = await fetch(store.archivo);
+  const resp   = await fetch(store.archivo, { headers: { 'Authorization': 'Bearer ' + getToken() } });
   if (!resp.ok) throw new Error(`No se pudo cargar ${store.archivo} (HTTP ${resp.status})`);
   const buffer = await resp.arrayBuffer();
   const wb     = XLSX.read(buffer, { type: 'array' });
@@ -283,12 +283,15 @@ function processArticles(rows) {
       pl: pall, md: mdq, pe: peso, vo: safeNum(r[C.vol]),
       lc:  loc,    mx:  safeNum(r[C.maxpick]),    mn:  safeNum(r[C.minpick]),
       la:  locaux, mxa: safeNum(r[C.maxpickaux]), mna: safeNum(r[C.minpickaux]),
-      wc:  pall <= 0 ? '?' : pall <= 30 ? 'Voluminoso' : pall <= 200 ? 'Mediano' : 'Pequeño',
+      wc:  (v => v > 300 ? 'Muy voluminoso' : v > 150 ? 'Voluminoso' : v > 30 ? 'Estándar' : v > 5 ? 'Compacto' : 'Muy compacto')(safeNum(r[C.vol])),
+      pc:  (p => p > 25 ? 'Muy pesado' : p > 15 ? 'Pesado' : p > 5 ? 'Medio' : p > 1 ? 'Ligero' : 'Muy ligero')(peso),
       es:  C.endsale   ? parseExcelDate(r[C.endsale])   : null,
       ss:  C.startsale ? parseExcelDate(r[C.startsale]) : null,
       st:  C.socktotal ? safeNum(r[C.socktotal]) : 0,
       pv:  C.pv        ? safeNum(r[C.pv])        : 0,
       pr:  calcPri(hasAnyLoc, semuds, pall),
+      fam: C.fam ? safeStr(r[C.fam]) : null,
+      hfb: C.hfb ? safeStr(r[C.hfb]) : null,
     };
   }).filter(a => a && a.i);
 }
@@ -414,12 +417,12 @@ function calcAlerts() {
   ARTS.filter(a => a.a === 'NS' && (a.lc || a.la)).forEach(a => {
     if (a.lc) BYE.push({
       i: a.i, d: a.d, loc: a.lc, almacen: 'CENTRAL',
-      mx: a.mx, mn: a.mn, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+      mx: a.mx, mn: a.mn, s: a.s, pe: a.pe, md: a.md, endsale: a.es, startsale: a.ss,
       st: a.st, pv: a.pv,
     });
     if (a.la) BYE.push({
       i: a.i, d: a.d, loc: a.la, almacen: 'AUXILIAR1',
-      mx: a.mxa, mn: a.mna, s: a.s, pe: a.pe, md: a.md, endsale: a.es,
+      mx: a.mxa, mn: a.mna, s: a.s, pe: a.pe, md: a.md, endsale: a.es, startsale: a.ss,
       st: a.st, pv: a.pv,
     });
   });

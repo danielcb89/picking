@@ -25,11 +25,15 @@ let currentLayout = 0;  // Índice del layout activo en el selector de tabs
 
 // ── Configuración global (panel Ajustes) ────────────────────────
 const CFG_DEFAULTS = {
-  rotacion:    20,   // uds/mes — umbral de alta rotación
-  pesado:      20,   // kg — límite para considerar manipulación pesada
+  rotacion:    20,   // uds/mes — umbral de alta rotación (mapa + HEAVY base)
+  pesado:      20,   // kg — límite base para HEAVY
   topN:        5,    // N — top menor rotación por almacén
   topNHigh:    5,    // N — top mayor rotación por almacén
   espLibre:    50,   // % libre mínimo para Picking libre
+  libreCards:    [],
+  byeCards:      [],
+  pesadosCards:  [],
+  artsCards:     [],
 };
 let CFG = { ...CFG_DEFAULTS };
 
@@ -39,14 +43,21 @@ let LIBRE_ALL     = []; // Todas las posiciones de picking + suelo, con datos de
 let FLOOR_FREE    = new Set(); // Códigos de suelo con al menos 1 pallet libre (para color teal en mapa)
 let freeThreshold = 50; // % libre mínimo para considerar "espacio disponible" (25/50/75/100)
 let freeAlmacen   = '';  // Filtro de almacén: '' (ambos) | 'CENTRAL' | 'AUXILIAR1'
-let libreCardFilter = ''; // Filtro activo por tarjeta en Picking libre: '' | 'picking-c' | 'picking-a' | 'suelo-c' | 'suelo-a' | 'pallet-libre'
-let pesadosCardFilter = ''; // Filtro activo por tarjeta en Artículos pesados: '' | 'picking' | 'central' | 'aux'
+let freeType      = '';  // Filtro tipo posición: '' (ambos) | 'picking' | 'suelo'
+let freePalet     = '';  // Filtro palet: '' (ambos) | 'Euro' | 'IKEA' — ponytail: decorativo hasta que el mapa tenga datos de tipo palet
+let pesadosAlmacen = '';  // '' | 'CENTRAL' | 'AUXILIAR1'
+let pesadosPesoMin = 0;   // kg mínimo adicional sobre HEAVY (0 = sin filtro extra)
+let pesadosRotMin  = 0;   // uds/mes mínimo adicional (0 = sin filtro extra)
 
 // ── Bye bye (artículos NS con localización asignada) ─────────────
 let BYE = []; // Array de artículos NS con loc — uno por cada localización que ocupan (Central y/o Aux1)
 let NS_LOCS = new Set(); // Lookup rápido: códigos de localización con algún artículo NS (color mapa)
-let byeSearch = '';
-let byeCardFilter = ''; // '' | 'central' | 'aux'
+let byeSearch    = '';
+let byeAlmacen   = '';   // '' | 'CENTRAL' | 'AUXILIAR1'
+let byeStock     = '';   // '' | 'con' | 'sin'
+let byePV        = '';   // '' | 'con' | 'sin'
+let byeDateFrom  = '';   // 'YYYY-MM-DD' | ''
+let byeDateTo    = '';   // 'YYYY-MM-DD' | ''
 
 // ── Estado de la vista Artículos ────────────────────────────────
 let filteredArts = [];
@@ -74,8 +85,8 @@ let selectedStore = null; // Código de tienda elegido: 'PMI' | 'TFE' | 'GCA' | 
 
 // ── Mapa de tiendas → fichero de ubicaciones ────────────────────
 const STORE_FILES = {
-  PMI: { nombre: 'Palma de Mallorca', archivo: 'almacenes/PMI_ubicaciones.xlsx' },
-  TFE: { nombre: 'Tenerife',          archivo: 'almacenes/TFE_ubicaciones.xlsx' },
-  GCA: { nombre: 'Gran Canaria',      archivo: 'almacenes/GCA_ubicaciones.xlsx' },
-  LZA: { nombre: 'Lanzarote',         archivo: 'almacenes/LZA_ubicaciones.xlsx' },
+  PMI: { nombre: 'Palma de Mallorca', archivo: '/api/almacenes/PMI_ubicaciones.xlsx' },
+  TFE: { nombre: 'Tenerife',          archivo: '/api/almacenes/TFE_ubicaciones.xlsx' },
+  GCA: { nombre: 'Gran Canaria',      archivo: '/api/almacenes/GCA_ubicaciones.xlsx' },
+  LZA: { nombre: 'Lanzarote',         archivo: '/api/almacenes/LZA_ubicaciones.xlsx' },
 };

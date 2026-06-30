@@ -60,110 +60,103 @@ function boxHeightFromVol(vo, minH, maxH) {
   return Math.round(minH + norm * (maxH - minH));
 }
 
-// ── OPEN / CLOSE — efecto zoom+flip desde la celda ───────────────
+// ── OPEN / CLOSE — navegación inline (sustituye el pop-up) ──────
+
+let _shelfState    = null; // {p, est, alm} para restaurar al volver desde ficha
+let _shelfFromView = null; // vista de origen: 'mapa' | 'libre' | …
 
 function openShelfDetail(el) {
   const p   = el.getAttribute('data-p');
   const est = el.getAttribute('data-e');
   const alm = el.getAttribute('data-alm');
   if (!p || !est || !alm) return;
-
-  // Renderizar contenido
-  document.getElementById('shelfTitle').textContent = `Pasillo ${p} · Estantería ${est}`;
-  document.getElementById('shelfSub').textContent   = alm === 'AUXILIAR1' ? '🟢 Almacén Auxiliar1' : '🔵 Almacén Central';
-  document.getElementById('shelfBody').innerHTML    = renderShelfSVG(p, est, alm);
-  bindShelfTooltips();
-
-  // Posición y tamaño de la celda origen
-  const rect  = el.getBoundingClientRect();
-  const cellCX = rect.left + rect.width  / 2;
-  const cellCY = rect.top  + rect.height / 2;
-
-  // Destino: panel centrado en pantalla
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const targetW = Math.min(vw * 0.82, 960);
-  const targetH = Math.min(vh * 0.94, 940);
-  const targetX = (vw - targetW) / 2;
-  const targetY = (vh - targetH) / 2;
-
-  const panel = document.getElementById('shelfPanel');
-  const ov    = document.getElementById('shelfOverlay');
-
-  // Estado inicial: tamaño y posición de la celda, girado 90° (de canto)
-  const sx = rect.width  / targetW;
-  const sy = rect.height / targetH;
-  const tx = cellCX - (targetX + targetW / 2);
-  const ty = cellCY - (targetY + targetH / 2);
-
-  // Fijar tamaño destino del panel
-  panel.style.width    = `${targetW}px`;
-  panel.style.height   = `${targetH}px`;
-  panel.style.top      = `${targetY}px`;
-  panel.style.left     = `${targetX}px`;
-  panel.style.right    = 'auto';
-  panel.style.transition = 'none';
-  panel.style.transform  = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy}) rotateY(90deg)`;
-  panel.style.opacity    = '0';
-  panel.style.borderRadius = '4px';
-
-  ov.style.display = 'flex';
-  ov.style.alignItems = 'center';
-  ov.style.justifyContent = 'center';
-  ov.style.background = 'rgba(10,20,40,0)';
-  ov.style.transition = 'none';
-
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    // Fase 1: zoom + flip hasta posición final
-    panel.style.transition = 'transform .38s cubic-bezier(.22,.8,.32,1), opacity .2s ease, border-radius .38s';
-    panel.style.transform  = 'translate(0,0) scale(1) rotateY(0deg)';
-    panel.style.opacity    = '1';
-    panel.style.borderRadius = '6px';
-
-    ov.style.transition = 'background .3s ease';
-    ov.style.background = 'rgba(10,20,40,.45)';
-
-    // Ajustar altura del scroll tras animación
-    setTimeout(() => {
-      const scrollEl = document.getElementById('shelfScroll');
-      const svgEl    = document.getElementById('shelfSvg');
-      if (!scrollEl || !svgEl) return;
-      const svgW        = parseFloat(scrollEl.dataset.svgw);
-      const svgH        = parseFloat(scrollEl.dataset.svgh);
-      const viewH       = parseFloat(scrollEl.dataset.viewh);
-      const needsScroll = scrollEl.dataset.needsScroll === 'true';
-      const renderedW   = svgEl.clientWidth || scrollEl.clientWidth || svgW;
-      const scale       = renderedW / svgW;
-      const heightPx    = needsScroll ? viewH * scale : svgH * scale;
-      scrollEl.style.height = `${Math.round(heightPx)}px`;
-      if (needsScroll) setTimeout(() => {
-        scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
-      }, 420);
-    }, 400);
-  }));
+  _shelfFromView = 'mapa';
+  _openShelf(p, est, alm);
 }
 
+// Abre el shelf desde cualquier vista (activa p-mapa sin re-renderizar el mapa)
+function openShelfFromView(fromView, p, e, alm) {
+  _shelfFromView = fromView;
+  VIEWS_ALL.forEach(x => {
+    document.getElementById('p-' + x)?.classList.toggle('act', x === 'mapa');
+    document.getElementById('n-' + x)?.classList.toggle('act', x === 'mapa');
+  });
+  document.getElementById('sb-arts').style.display  = 'none';
+  document.getElementById('sb-libre').style.display = 'none';
+  _openShelf(String(p), String(e), alm);
+}
+
+function _openShelf(p, est, alm) {
+  _shelfState = { p, est, alm };
+
+  // Cabecera
+  document.getElementById('mapHdrMap').style.display      = 'none';
+  document.getElementById('mapHdrShelf').style.display    = '';
+  document.getElementById('shelfInlineTitle').textContent = `Pasillo ${p} · Estantería ${est}`;
+  document.getElementById('shelfInlineSub').textContent   = alm === 'AUXILIAR1' ? '🟢 Almacén Auxiliar1' : '🔵 Almacén Central';
+
+  // Ocultar mapa y leyenda — panel lateral derecho se mantiene visible
+  document.getElementById('mapLegendFloat').style.display = 'none';
+  document.getElementById('mapArea').style.display        = 'none';
+
+  const inline = document.getElementById('shelfInline');
+  inline.style.display  = 'block';
+  inline.style.maxWidth = '';   // shelfInline sigue flex:1 — el panel derecho no se mueve
+  inline.innerHTML      = renderShelfSVG(p, est, alm);
+
+  // Constrañir el shelfScroll interior al mismo ancho máximo del popup original
+  const targetW  = Math.min(window.innerWidth * 0.82, 960);
+  const scrollEl0 = document.getElementById('shelfScroll');
+  if (scrollEl0) scrollEl0.style.maxWidth = `${targetW}px`;
+  bindShelfTooltips();
+
+  // Ajustar altura del SVG y del viewport de scroll
+  requestAnimationFrame(() => {
+    const scrollEl = document.getElementById('shelfScroll');
+    const svgEl    = document.getElementById('shelfSvg');
+    if (!scrollEl || !svgEl) return;
+    const svgW        = parseFloat(scrollEl.dataset.svgw);
+    const svgH        = parseFloat(scrollEl.dataset.svgh);
+    const viewH       = parseFloat(scrollEl.dataset.viewh);
+    const needsScroll = scrollEl.dataset.needsScroll === 'true';
+    // Medir ancho real (acotado por max-width del shelfScroll)
+    const renderedW   = svgEl.clientWidth || scrollEl.clientWidth || svgW;
+    const scale       = renderedW / svgW;
+    // Sin height explícito el SVG se renderiza a svgH px brutos (sin escala).
+    // Forzarlo al tamaño real escalado para que scrollHeight sea correcto.
+    svgEl.style.height    = `${Math.round(scale * svgH)}px`;
+    scrollEl.style.height = `${Math.round(needsScroll ? scale * viewH : scale * svgH)}px`;
+    if (needsScroll) setTimeout(() => {
+      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+    }, 80);
+  });
+}
+
+// Limpieza de UI del shelf — sin navegar (la navegación la decide el caller)
 function closeShelfDetail() {
-  const panel = document.getElementById('shelfPanel');
-  const ov    = document.getElementById('shelfOverlay');
-
-  // Flip de salida: encoge y gira de vuelta
-  panel.style.transition = 'transform .28s cubic-bezier(.55,0,.7,.4), opacity .2s ease .05s, border-radius .28s';
-  panel.style.transform  = 'scale(0.05) rotateY(-90deg)';
-  panel.style.opacity    = '0';
-  panel.style.borderRadius = '50%';
-
-  ov.style.transition = 'background .25s ease';
-  ov.style.background = 'rgba(10,20,40,0)';
-
+  _shelfState    = null;
+  _shelfFromView = null;
+  document.getElementById('mapHdrShelf').style.display    = 'none';
+  document.getElementById('mapHdrMap').style.display      = '';
+  document.getElementById('mapArea').style.display        = '';
+  const _il = document.getElementById('shelfInline');
+  _il.style.display  = 'none';
+  _il.style.maxWidth = '';
+  _il.innerHTML      = '';
+  document.getElementById('mapLegendFloat').style.display = '';
   hideShelfTT();
-  setTimeout(() => {
-    ov.style.display = 'none';
-    panel.style.transition = 'none';
-    panel.style.transform  = '';
-    panel.style.opacity    = '';
-    panel.style.borderRadius = '';
-  }, 300);
+}
+
+// Botón ← Volver: lee el origen ANTES de limpiar y navega al destino correcto
+function backFromShelf() {
+  const from = _shelfFromView || 'mapa';
+  closeShelfDetail();
+  if (from === 'mapa') {
+    // Ya estamos en p-mapa, solo mostrar el mapa
+    document.getElementById('mapArea').style.display = '';
+  } else {
+    gotoView(from);
+  }
 }
 
 // ── PANEL LATERAL con diagonales metálicas en X ───────────────────
@@ -267,7 +260,7 @@ function renderShelfSVG(p, e, alm) {
 
   const wrapper = `<div id="shelfScroll" data-svgw="${svgTotalW}" data-svgh="${svgH}"
     data-viewh="${IDEAL_VIEW_H()}" data-needs-scroll="${needsScroll}"
-    style="overflow-x:hidden;overflow-y:${needsScroll ? 'scroll' : 'hidden'};">`;
+    style="overflow-x:hidden;overflow-y:${needsScroll ? 'scroll' : 'hidden'};max-width:100%;">`;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" id="shelfSvg"
     width="100%" viewBox="0 0 ${svgTotalW} ${svgH}"
@@ -671,6 +664,12 @@ function bindShelfTooltips() {
         } catch (_) {}
       });
       el.addEventListener('mouseleave', hideShelfTT);
+      el.addEventListener('click', () => {
+        try {
+          const a = JSON.parse(decodeURIComponent(el.getAttribute('data-art')));
+          showArtCard(a.i);
+        } catch (_) {}
+      });
     });
   });
 }

@@ -20,7 +20,10 @@ function pcls(p) {
   return { CRÍTICA: 'b-rd', ALTA: 'b-rd', MEDIA: 'b-yw', OK: 'b-gn' }[p] || 'b-gy';
 }
 function wcls(w) {
-  return { Voluminoso: 'b-rd', Mediano: 'b-yw', Pequeño: 'b-gn' }[w] || 'b-gy';
+  return { 'Muy voluminoso':'b-rd', 'Voluminoso':'b-or', 'Estándar':'b-yw', 'Compacto':'b-gn', 'Muy compacto':'b-bl' }[w] || 'b-gy';
+}
+function pcls_w(p) {
+  return { 'Muy pesado':'b-rd', 'Pesado':'b-or', 'Medio':'b-yw', 'Ligero':'b-gn', 'Muy ligero':'b-bl' }[p] || 'b-gy';
 }
 
 
@@ -84,41 +87,160 @@ function ventaVal(a) {
 const VENTA_LABELS = { mes: 'Vta/mes', sem: 'Vta/sem', ano: 'Vta/año' };
 const VMIN_LABELS  = { mes: 'Venta mín (uds/mes)', sem: 'Venta mín (uds/sem)', ano: 'Venta mín (uds/año)' };
 
+// Clave de campo real según modo activo
+function ventaKey() {
+  if (ventaMode === 'sem') return 'sw';
+  if (ventaMode === 'ano') return 'sa';
+  return 's';
+}
+
 function setVentaMode(mode) {
   ventaMode = mode;
-  // Actualizar label del filtro de venta mínima
   const lbl = document.getElementById('fVminLabel');
   if (lbl) lbl.textContent = VMIN_LABELS[mode] || VMIN_LABELS.mes;
-  // Resetear ordenación a ventas descendente
-  sortK = 's'; sortD = 'd';
-  sortStates.arts = { k: 's', d: 'd' };
+  // Resetear ordenación a la columna de ventas del modo activo
+  const k = ventaKey();
+  sortK = k; sortD = 'd';
+  sortStates.arts = { k, d: 'd' };
+  filterArts();
+}
+
+let _activeArtsCard = null;
+
+const LOC_LABELS  = { '':'Todos', con:'Con picking (alguno)', sin:'Sin picking (ninguno)', central:'Picking Central', aux:'Picking Auxiliar', ambos:'En ambos' };
+const SURT_LABELS = { '':'Todos', S:'En surtido', NS:'Fuera surtido' };
+const MODE_LABELS = { mes:'Mensual', sem:'Semanal', ano:'Anual' };
+const REPO_LABELS = { muy_alta:'Repo muy alta', alta:'Repo alta', media:'Repo media', optima:'Repo óptima' };
+
+// Función única de filtrado — usada tanto por filterArts como por el conteo de tarjetas
+function computeArts(f) {
+  const vKey = f.ventaMode === 'sem' ? 'sw' : f.ventaMode === 'ano' ? 'sa' : 's';
+  const vmin = f.vmin || 0;
+  return ARTS.filter(a => {
+    const vta = a[vKey] || 0;
+    if (vta < vmin)                              return false;
+    if (f.loc === 'con'     && !a.lc && !a.la)  return false;
+    if (f.loc === 'sin'     && (a.lc || a.la))  return false;
+    if (f.loc === 'central' && (!a.lc || a.la)) return false;
+    if (f.loc === 'aux'     && (!a.la || a.lc)) return false;
+    if (f.loc === 'ambos'   && !(a.lc && a.la)) return false;
+    if (f.surt && a.a !== f.surt)               return false;
+    if (f.vol  && a.wc !== f.vol)               return false;
+    if (f.peso && a.pc !== f.peso)              return false;
+    if (f.repo) {
+      const mx = (a.mx || 0) + (a.mxa || 0);
+      if (!mx) return false;
+      const pct = mx / (vta || 1);
+      if (f.repo === 'muy_alta' && pct >= 0.25) return false;
+      if (f.repo === 'alta'     && pct >= 0.50) return false;
+      if (f.repo === 'media'    && pct >= 0.75) return false;
+      if (f.repo === 'optima'   && pct <  1.00) return false;
+    }
+    return true;
+  });
+}
+
+function renderArtsCards() {
+  const cards = CFG.artsCards || [];
+  const addBtn = cards.length < 10
+    ? `<div class="card card-add" onclick="openAddArtsCard()" title="Nueva tarjeta">＋</div>` : '';
+  const el = document.getElementById('artsCards');
+  if (!el) return;
+  el.innerHTML = cards.map(c => {
+    const f = c.filters;
+    const count = computeArts(f).length;
+    const chips = [];
+    if (f.vmin)      chips.push(`≥${f.vmin} ${MODE_LABELS[f.ventaMode]||'Mensual'}`);
+    if (f.loc)       chips.push(LOC_LABELS[f.loc] || f.loc);
+    if (f.surt)      chips.push(SURT_LABELS[f.surt] || f.surt);
+    if (f.vol)       chips.push(f.vol);
+    if (f.peso)      chips.push(f.peso);
+    if (f.repo)      chips.push(REPO_LABELS[f.repo] || f.repo);
+    const isAct = _activeArtsCard === c.id;
+    return `<div class="card card-click${isAct?' act-card':''}" onclick="applyArtsCard('${c.id}')">
+      <div class="clbl">${c.icon||''} ${c.name}</div>
+      <div class="cval" style="color:var(--b2)">${count}</div>
+      <div class="csub">${chips.join(' · ') || 'Todos los artículos'}</div>
+      <button class="card-del-btn" onclick="event.stopPropagation();deleteArtsCard('${c.id}')">🗑</button>
+    </div>`;
+  }).join('') + addBtn;
+}
+
+function openAddArtsCard() {
+  const f = {
+    vmin: parseFloat(document.getElementById('fVmin')?.value) || 0,
+    ventaMode,
+    loc:  document.getElementById('fLoc2')?.value  || '',
+    surt: document.getElementById('fSurt')?.value  || '',
+    repo: document.getElementById('fRepo')?.value  || '',
+    vol:  document.getElementById('fVol')?.value   || '',
+    peso: document.getElementById('fPeso')?.value  || '',
+  };
+  const dup = (CFG.artsCards || []).find(c =>
+    c.filters.vmin      === f.vmin &&
+    c.filters.ventaMode === f.ventaMode &&
+    c.filters.loc       === f.loc &&
+    c.filters.surt      === f.surt &&
+    c.filters.repo      === f.repo &&
+    c.filters.vol       === f.vol &&
+    c.filters.peso      === f.peso
+  );
+  if (dup) { showToast(`Ya existe "${dup.name}" con estos filtros`); return; }
+  _cardMode  = 'arts';
+  _lcardIcon = _LCARD_ICONS[0];
+  document.getElementById('lcardName').value = '';
+  document.getElementById('lcardIcons').innerHTML = _LCARD_ICONS.map(ic =>
+    `<button class="lcard-icon-btn${ic === _lcardIcon ? ' sel' : ''}" onclick="selectLcardIcon('${ic}')">${ic}</button>`
+  ).join('');
+  document.getElementById('libreCardModal').style.display = 'flex';
+}
+
+function deleteArtsCard(id) {
+  showConfirm('¿Eliminar esta tarjeta?', () => {
+    CFG.artsCards = (CFG.artsCards || []).filter(c => c.id !== id);
+    if (_activeArtsCard === id) _activeArtsCard = null;
+    savePreferences(selectedStore, 'arts', CFG);
+    renderArtsCards();
+  });
+}
+
+function applyArtsCard(id) {
+  const c = (CFG.artsCards || []).find(x => x.id === id);
+  if (!c) return;
+  _activeArtsCard = id;
+  const f = c.filters;
+  const vminEl = document.getElementById('fVmin');
+  if (vminEl) vminEl.value = f.vmin || 0;
+  setCselValue('fLoc2',      f.loc  || '');
+  setCselValue('fSurt',      f.surt || '');
+  setCselValue('fRepo',      f.repo || '');
+  setCselValue('fVol',       f.vol  || '');
+  setCselValue('fPeso',      f.peso || '');
+  setCselValue('fVentaMode', f.ventaMode || 'mes');
+  ventaMode = f.ventaMode || 'mes';
+  const lbl = document.getElementById('fVminLabel');
+  if (lbl) lbl.textContent = VMIN_LABELS[ventaMode] || VMIN_LABELS.mes;
   filterArts();
 }
 
 function filterArts() {
-  const q     = (document.getElementById('sbox')   || { value: '' }).value.toLowerCase();
-  const vmin  = parseFloat((document.getElementById('fVmin')  || { value: 0 }).value) || 0;
-  const fpe   = (document.getElementById('fPeso')  || { value: '' }).value;
-  const floc  = (document.getElementById('fLoc2')  || { value: '' }).value;
-  const fsurt = (document.getElementById('fSurt')  || { value: '' }).value;
-  const fv    = (document.getElementById('fVista') || { value: '' }).value;
-
-  filteredArts = ARTS.filter(a => {
-    if (ventaVal(a) < vmin)                            return false;
-    if (fpe   && a.wc !== fpe)                         return false;
-    if (floc === 'con'     && !a.lc && !a.la)          return false;
-    if (floc === 'sin'     && (a.lc || a.la))          return false;
-    if (floc === 'central' && (!a.lc || a.la))         return false;
-    if (floc === 'aux'     && (!a.la || a.lc))         return false;
-    if (floc === 'ambos'   && !(a.lc && a.la))         return false;
-    if (fsurt  && a.a !== fsurt)                       return false;
-    if (fv === 'prio'   && !['CRÍTICA','ALTA'].includes(a.pr)) return false;
-    if (q && !matchTerms(q, [a.i, a.d, a.lc, a.la]))  return false;
-    return true;
-  });
+  const q = (document.getElementById('sbox') || { value: '' }).value.toLowerCase();
+  const f = {
+    vmin:      parseFloat(document.getElementById('fVmin')?.value) || 0,
+    ventaMode,
+    loc:       document.getElementById('fLoc2')?.value  || '',
+    surt:      document.getElementById('fSurt')?.value  || '',
+    repo:      document.getElementById('fRepo')?.value  || '',
+    vol:       document.getElementById('fVol')?.value   || '',
+    peso:      document.getElementById('fPeso')?.value  || '',
+  };
+  filteredArts = computeArts(f).filter(a =>
+    !q || matchTerms(q, [a.i, a.d, a.lc, a.la])
+  );
 
   sortArtsData();
   curPage = 1;
+  renderArtsCards();
   renderArtsTable();
 }
 
@@ -158,14 +280,15 @@ function renderArtsTable() {
       ? `<span style="color:${caducado ? 'var(--mu)' : proxFin ? 'var(--or)' : 'var(--tx)'}">${fmtDate(a.es)}</span>`
       : `<span style="color:var(--mu)">—</span>`;
 
-    return `<tr>
+    return `<tr class="row-clickable" onclick="openArtDetail('${a.i}')">
       <td style="color:var(--b2);font-weight:600">${a.i}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${a.d}</td>
       <td><span class="badge ${a.a === 'S' ? 'b-gn' : a.a === 'NS' ? 'b-gy' : 'b-bl'}">${a.a || '—'}</span></td>
       <td style="font-weight:700;color:${vta >= CFG.rotacion ? 'var(--gn)' : vta > 0 ? 'var(--tx)' : 'var(--mu)'}">${vta}</td>
       <td>${a.pl}</td>
       <td><span class="badge ${wcls(a.wc)}">${a.wc}</span></td>
-      <td style="color:${a.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${a.pe > 0 ? a.pe + ' kg' : '—'}</td>
+      <td><span class="badge ${pcls_w(a.pc)}">${a.pc}</span></td>
+      <td style="color:var(--mu);font-size:11px">${a.pe > 0 ? a.pe + ' kg' : '—'}</td>
       <td>${a.vo > 0 ? a.vo + ' dm³' : '—'}</td>
       <td>${a.md || '<span style="color:var(--rd)">⚠ 0</span>'}</td>
       <td>${locC}</td>
@@ -178,8 +301,8 @@ function renderArtsTable() {
   const vtaLabel = VENTA_LABELS[ventaMode] || 'Vta/mes';
   document.getElementById('artsTbl').innerHTML = `<table>
     <thead><tr>
-      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts','s', vtaLabel)}
-      ${th('arts','pl','Pallet')}${th('arts','wc','Tipo')}${th('arts','pe','Peso')}${th('arts','vo','Vol')}${th('arts','md','MDQ')}
+      ${th('arts','i','Código')}${th('arts','d','Descripción')}${th('arts','a','Surtido')}${th('arts', ventaKey(), vtaLabel)}
+      ${th('arts','pl','Pallet')}${th('arts','wc','Volumen')}${th('arts','pc','Peso')}${th('arts','pe','kg')}${th('arts','vo','Vol')}${th('arts','md','MDQ')}
       ${th('arts','lc','Loc Central (max/min)')}${th('arts','la','Loc Aux1 (max/min)')}
       ${th('arts','ss','Inicio venta')}${th('arts','es','Fin venta')}
     </tr></thead>
@@ -208,7 +331,7 @@ function renderArtsTable() {
 }
 
 function resetFilters() {
-  ['fVmin', 'fPeso', 'fLoc2', 'fSurt', 'fVista', 'sbox', 'fVentaMode'].forEach(id => {
+  ['fVmin', 'fLoc2', 'fSurt', 'fRepo', 'fVol', 'fPeso', 'sbox', 'fVentaMode'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     if (id === 'fVmin') el.value = '0';
@@ -227,9 +350,9 @@ function resetFilters() {
 function exportArts() {
   const fmtDate = d => d ? d.toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
   const vtaLabel = VENTA_LABELS[ventaMode] || 'Vta/mes';
-  const hdr  = ['Código','Descripción','Surtido', vtaLabel,'Pallet','Tipo peso','Peso kg','Vol dm3',
+  const hdr  = ['Código','Descripción','Surtido', vtaLabel,'Pallet','Volumen','Clase peso','Peso kg','Vol dm3',
                  'MDQ','Loc Central','Max Central','Min Central','Loc Aux1','Max Aux1','Min Aux1','Inicio venta','Fin venta'];
-  const rows = filteredArts.map(a => [a.i, a.d, a.a, ventaVal(a), a.pl, a.wc, a.pe, a.vo, a.md,
+  const rows = filteredArts.map(a => [a.i, a.d, a.a, ventaVal(a), a.pl, a.wc, a.pc, a.pe, a.vo, a.md,
                                        a.lc, a.mx, a.mn, a.la, a.mxa, a.mna, fmtDate(a.ss), fmtDate(a.es)]);
   csvDownload('wms_articulos', hdr, rows);
 }
@@ -237,44 +360,101 @@ function exportArts() {
 
 // ── REVISAR LOCALIZACIÓN ─────────────────────────────────────────
 
+let _activePesadosCard = null;
+
+function computePesados(almacen, pesoMin, rotMin) {
+  return HEAVY.filter(b => {
+    if (almacen && b.almacen !== almacen) return false;
+    if (pesoMin  && b.pe < pesoMin)       return false;
+    if (rotMin   && b.s  < rotMin)        return false;
+    return true;
+  });
+}
+
+function setPesadosAlmacen(val)  { pesadosAlmacen = val;           _activePesadosCard = null; renderPesados(); }
+function setPesadosPesoMin(val)  { pesadosPesoMin = Number(val)||0; _activePesadosCard = null; renderPesados(); }
+function setPesadosRotMin(val)   { pesadosRotMin  = Number(val)||0; _activePesadosCard = null; renderPesados(); }
+
 function filterPesados(q) {
   pesadosSearch = (q || '').trim().toLowerCase();
   renderPesadosTable();
 }
 
-function setPesadosCardFilter(key) {
-  pesadosCardFilter = pesadosCardFilter === key ? '' : key;
-  renderPesados();
+function renderPesadosCards() {
+  const cards = CFG.pesadosCards || [];
+  const addBtn = cards.length < 10
+    ? `<div class="card card-add" onclick="openAddPesadosCard()" title="Nueva tarjeta">＋</div>` : '';
+  document.getElementById('pesadosCards').innerHTML =
+    cards.map(c => {
+      const data = computePesados(c.filters.almacen, c.filters.pesoMin, c.filters.rotMin);
+      const pk   = data.filter(b => b.lt === 'picking').length;
+      const isAct = _activePesadosCard === c.id;
+      const chips = [];
+      if (c.filters.almacen) chips.push(c.filters.almacen === 'CENTRAL' ? 'Central' : 'Aux1');
+      if (c.filters.pesoMin) chips.push(`≥${c.filters.pesoMin}kg`);
+      if (c.filters.rotMin)  chips.push(`≥${c.filters.rotMin}/mes`);
+      return `<div class="card card-click${isAct ? ' act-card' : ''}" onclick="applyPesadosCard('${c.id}')">
+        <div class="clbl">${c.icon || ''} ${c.name}</div>
+        <div class="cval" style="color:var(--or)">${data.length}</div>
+        <div class="csub">${chips.length ? chips.join(' · ') : `>${CFG.pesado}kg sin suelo`} · ${pk} picking</div>
+        <button class="card-del-btn" onclick="event.stopPropagation();deletePesadosCard('${c.id}')">🗑</button>
+      </div>`;
+    }).join('') + addBtn;
+}
+
+function openAddPesadosCard() {
+  const dup = (CFG.pesadosCards || []).find(c =>
+    c.filters.almacen === pesadosAlmacen &&
+    c.filters.pesoMin === pesadosPesoMin &&
+    c.filters.rotMin  === pesadosRotMin
+  );
+  if (dup) { showToast(`Ya existe "${dup.name}" con estos filtros`); return; }
+  _cardMode  = 'pesados';
+  _lcardIcon = _LCARD_ICONS[0];
+  document.getElementById('lcardName').value = '';
+  document.getElementById('lcardIcons').innerHTML = _LCARD_ICONS.map(ic =>
+    `<button class="lcard-icon-btn${ic === _lcardIcon ? ' sel' : ''}" onclick="selectLcardIcon('${ic}')">${ic}</button>`
+  ).join('');
+  document.getElementById('libreCardModal').style.display = 'flex';
+}
+
+function deletePesadosCard(id) {
+  showConfirm('¿Eliminar esta tarjeta?', () => {
+    CFG.pesadosCards = (CFG.pesadosCards || []).filter(c => c.id !== id);
+    if (_activePesadosCard === id) _activePesadosCard = null;
+    savePreferences(selectedStore, 'pesados', CFG);
+    renderPesadosCards();
+  });
+}
+
+function _syncPesadosUI() {
+  setCselValue('pesadosAlmacenSel', pesadosAlmacen);
+  // slider de peso
+  const rng = document.getElementById('pesadosPesoRange');
+  const val = document.getElementById('pesadosPesoVal');
+  const lbl = document.getElementById('pesadosPesoCselVal');
+  if (rng) { rng.value = pesadosPesoMin; rng.style.setProperty('--pct', (pesadosPesoMin / 60 * 100) + '%'); }
+  if (val) val.textContent = pesadosPesoMin + ' kg';
+  if (lbl) lbl.textContent = pesadosPesoMin > 0 ? '≥' + pesadosPesoMin + ' kg' : '0 kg (sin filtro)';
+  // input de rotación
+  const rotInp = document.getElementById('pesadosRotInput');
+  if (rotInp) rotInp.value = pesadosRotMin || '';
+}
+
+function applyPesadosCard(id) {
+  const c = (CFG.pesadosCards || []).find(x => x.id === id);
+  if (!c) return;
+  _activePesadosCard = id;
+  pesadosAlmacen = c.filters.almacen || '';
+  pesadosPesoMin = c.filters.pesoMin || 0;
+  pesadosRotMin  = c.filters.rotMin  || 0;
+  _syncPesadosUI();
+  renderPesadosCards();
+  renderPesadosTable();
 }
 
 function renderPesados() {
-  const pk = HEAVY.filter(b => b.lt === 'picking').length;
-  const bc = HEAVY.filter(b => b.almacen === 'CENTRAL').length;
-  const ba = HEAVY.filter(b => b.almacen === 'AUXILIAR1').length;
-
-  const cardAct = key => pesadosCardFilter === key ? ' act-card' : '';
-
-  document.getElementById('pesadosCards').innerHTML = `
-    <div class="card card-click${cardAct('')}" onclick="setPesadosCardFilter('')">
-      <div class="clbl">Total a revisar</div>
-      <div class="cval" style="color:var(--or)">${HEAVY.length}</div>
-      <div class="csub">peso >${CFG.pesado}kg + ≥${CFG.rotacion}/mes + sin suelo</div>
-    </div>
-    <div class="card card-click${cardAct('picking')}" onclick="setPesadosCardFilter('picking')">
-      <div class="clbl">En picking</div>
-      <div class="cval" style="color:var(--yw)">${pk}</div>
-      <div class="csub">nivel de balda</div>
-    </div>
-    <div class="card card-click${cardAct('central')}" onclick="setPesadosCardFilter('central')">
-      <div class="clbl">Central</div>
-      <div class="cval" style="color:var(--b2)">${bc}</div>
-      <div class="csub">localizaciones</div>
-    </div>
-    <div class="card card-click${cardAct('aux')}" onclick="setPesadosCardFilter('aux')">
-      <div class="clbl">Auxiliar1</div>
-      <div class="cval" style="color:var(--aux-lbl)">${ba}</div>
-      <div class="csub">localizaciones</div>
-    </div>`;
+  renderPesadosCards();
 
   if (!document.getElementById('pesadosSearchInput')) {
     document.getElementById('pesadosToolbar').innerHTML = `
@@ -282,17 +462,14 @@ function renderPesados() {
         placeholder="Buscar artículo, código, localización..."
         oninput="filterPesados(this.value)">
       <span class="rowcnt-lbl" id="pesadosCount"></span>
-      <button class="btn-exp" onclick="exportPeso()">↓ CSV</button>`;
+      <button class="btn-exp" onclick="exportPesados()">↓ CSV</button>`;
   }
 
   renderPesadosTable();
 }
 
 function renderPesadosTable() {
-  let base = HEAVY;
-  if (pesadosCardFilter === 'picking') base = base.filter(b => b.lt === 'picking');
-  if (pesadosCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
-  if (pesadosCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+  const base = computePesados(pesadosAlmacen, pesadosPesoMin, pesadosRotMin);
 
   const filtered = pesadosSearch
     ? sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d)
@@ -302,7 +479,7 @@ function renderPesadosTable() {
   const cnt = document.getElementById('pesadosCount');
   if (cnt) cnt.textContent = filtered.length.toLocaleString() + ' registros';
 
-  const rows = filtered.map(b => `<tr>
+  const rows = filtered.map(b => `<tr class="row-clickable" onclick="openArtDetail('${b.i}')">
     <td style="color:${b.almacen === 'AUXILIAR1' ? 'var(--aux-lbl)' : 'var(--b2)'};font-weight:600">${b.loc}</td>
     <td><span class="badge ${b.almacen === 'AUXILIAR1' ? 'b-pu' : 'b-bl'}">${b.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central'}</span></td>
     <td><span class="badge ${b.lt === 'picking' ? 'b-yw' : 'b-or'}">${b.lt}</span></td>
@@ -325,26 +502,45 @@ function renderPesadosTable() {
 
 // ── PICKING LIBRE / ESPACIO DISPONIBLE ───────────────────────────
 
-// Filtra LIBRE_ALL según el umbral de "% libre mínimo" elegido.
-// threshold=25 → admite hasta 75% ocupado · threshold=50 → hasta 50% ocupado
-// threshold=75 → hasta 25% ocupado      · threshold=100 → solo completamente vacío
-function computeLibre(threshold, almacen) {
+// Filtra LIBRE_ALL según umbral, almacén y tipo de posición.
+// type: '' | 'picking' | 'suelo' | 'suelo-pallet' (suelo con al menos 1 pallet libre)
+function computeLibre(threshold, almacen, type) {
   const maxUsedPct = 100 - threshold;
   return LIBRE_ALL.filter(l => {
     if (almacen && l.almacen !== almacen) return false;
-    if (l.pctUsado === null) return !l.arts.length; // sin Cap./Vol: solo vacíos totales
+    if (type === 'suelo-pallet') {
+      if (l.lt !== 'suelo' || !(l.palletsFree > 0)) return false;
+    } else if (type) {
+      if (l.lt !== type) return false;
+    }
+    if (l.pctUsado === null) return !l.arts.length;
     return l.pctUsado <= maxUsedPct;
   });
 }
 
 function setFreeThreshold(val) {
   freeThreshold = parseInt(val);
+  _activeLibreCard = null;
   renderLibre();
 }
 
 function setFreeAlmacen(val) {
   freeAlmacen = val;
+  _activeLibreCard = null;
   renderLibre();
+}
+
+function setFreeType(val) {
+  freeType = val;
+  _activeLibreCard = null;
+  renderLibre();
+}
+
+function setFreePalet(val) {
+  freePalet = val;
+  _activeLibreCard = null;
+  // ponytail: freePalet no filtra aún — dato no disponible en LIBRE_ALL
+  renderLibreCards();
 }
 
 function filterLibre(q) {
@@ -352,62 +548,63 @@ function filterLibre(q) {
   renderLibreTable();
 }
 
-function setLibreCardFilter(key) {
-  libreCardFilter = libreCardFilter === key ? '' : key;
-  renderLibreTable();
-  // Resaltar tarjeta activa sin tener que re-renderizar todo el bloque de tarjetas
-  document.querySelectorAll('#libreCards .card-click').forEach(c =>
-    c.classList.toggle('act-card', c.dataset.key === libreCardFilter)
-  );
+// ── Helpers de UI: toast y confirm modal ─────────────────────────
+let _confirmCallback = null;
+let _toastTimer      = null;
+
+function showToast(msg) {
+  const toast = document.getElementById('appToast');
+  toast.querySelector('.app-toast-inner').textContent = msg;
+  toast.style.display = 'block';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 3500);
+}
+
+function showConfirm(msg, onConfirm, title = '¿Eliminar?') {
+  document.getElementById('appConfirmTitle').textContent = title;
+  document.getElementById('appConfirmMsg').textContent   = msg;
+  _confirmCallback = onConfirm;
+  const ok = document.getElementById('appConfirmOk');
+  ok.onclick = () => { closeAppConfirm(); onConfirm(); };
+  document.getElementById('appConfirm').style.display = 'flex';
+}
+
+function closeAppConfirm() {
+  document.getElementById('appConfirm').style.display = 'none';
+  _confirmCallback = null;
+}
+
+// ── Estado local de tarjetas personalizadas ──────────────────────
+let _activeLibreCard = null;
+let _lcardIcon       = '📦';
+
+const _LCARD_ICONS = ['📦','🏷️','🟢','🔵','🟡','🟠','🔴','⭐','🏆','📊','🔍','🚀','⚡','🎯','📋','🧊'];
+
+function renderLibreCards() {
+  const cards = (CFG.libreCards || []).map(card => {
+    const f     = card.filters;
+    const count = computeLibre(f.threshold, f.almacen, f.type).length;
+    const chips = [`≥${f.threshold}% libre`];
+    if (f.almacen) chips.push(f.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central');
+    if (f.type)    chips.push(f.type === 'suelo-pallet' ? 'Suelo + pallet libre' : f.type);
+    if (f.palet)   chips.push(f.palet);
+    const isAct = _activeLibreCard === card.id;
+    return `<div class="card card-click${isAct ? ' act-card' : ''}" style="position:relative" onclick="applyLibreCard('${card.id}')">
+      <button class="card-del-btn" title="Eliminar tarjeta" onclick="event.stopPropagation();deleteLibreCard('${card.id}')">×</button>
+      <div class="clbl">${card.icon} ${card.name}</div>
+      <div class="cval" style="color:var(--gn)">${count}</div>
+      <div class="csub">${chips.join(' · ')}</div>
+    </div>`;
+  }).join('');
+
+  const addBtn = (CFG.libreCards || []).length < 10
+    ? `<div class="card-add" onclick="openAddLibreCard()"><div>+</div><div style="font-size:11px;margin-top:3px">Nueva tarjeta</div></div>`
+    : '';
+  document.getElementById('libreCards').innerHTML = cards + addBtn;
 }
 
 function renderLibre() {
-  const list = computeLibre(freeThreshold, freeAlmacen);
-  const lC  = list.filter(f => f.almacen === 'CENTRAL');
-  const lA  = list.filter(f => f.almacen === 'AUXILIAR1');
-  const pkC = lC.filter(f => f.lt === 'picking').length;
-  const sfC = lC.filter(f => f.lt === 'suelo').length;
-  const pkA = lA.filter(f => f.lt === 'picking').length;
-  const sfA = lA.filter(f => f.lt === 'suelo').length;
-  const vacios = list.filter(f => !f.arts.length).length;
-  const infra  = list.length - vacios;
-  const palletFreeLocs = list.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
-  const palletFreeSum  = palletFreeLocs.reduce((s, f) => s + (f.palletsFree || 0), 0);
-
-  const cardAct = key => libreCardFilter === key ? ' act-card' : '';
-
-  document.getElementById('libreCards').innerHTML = `
-    <div class="card card-click${cardAct('')}" data-key="" onclick="setLibreCardFilter('')">
-      <div class="clbl">Total con ≥${freeThreshold}% libre</div>
-      <div class="cval" style="color:var(--gn)">${list.length}</div>
-      <div class="csub">${vacios} vacías + ${infra} infrautilizadas</div>
-    </div>
-    <div class="card card-click${cardAct('picking-c')}" data-key="picking-c" onclick="setLibreCardFilter('picking-c')">
-      <div class="clbl">Picking Central</div>
-      <div class="cval" style="color:var(--gn)">${pkC}</div>
-      <div class="csub">baldas con espacio</div>
-    </div>
-    <div class="card card-click${cardAct('suelo-c')}" data-key="suelo-c" onclick="setLibreCardFilter('suelo-c')">
-      <div class="clbl">Suelo Central</div>
-      <div class="cval" style="color:var(--b2)">${sfC}</div>
-      <div class="csub">posiciones con espacio</div>
-    </div>
-    <div class="card card-click${cardAct('picking-a')}" data-key="picking-a" onclick="setLibreCardFilter('picking-a')">
-      <div class="clbl">Picking Aux1</div>
-      <div class="cval" style="color:var(--aux-lbl)">${pkA}</div>
-      <div class="csub">baldas con espacio</div>
-    </div>
-    <div class="card card-click${cardAct('suelo-a')}" data-key="suelo-a" onclick="setLibreCardFilter('suelo-a')">
-      <div class="clbl">Suelo Aux1</div>
-      <div class="cval" style="color:var(--aux-lbl)">${sfA}</div>
-      <div class="csub">posiciones con espacio</div>
-    </div>
-    <div class="card card-click${cardAct('pallet-libre')}" data-key="pallet-libre" onclick="setLibreCardFilter('pallet-libre')">
-      <div class="clbl">🟦 Pallet libre en suelo</div>
-      <div class="cval" style="color:var(--teal)">${palletFreeLocs.length}</div>
-      <div class="csub">${palletFreeSum} pallets · cap. ${PALLETS_POR_SUELO}/suelo</div>
-    </div>`;
-
+  renderLibreCards();
   if (!document.getElementById('libreSearchInput')) {
     document.getElementById('libreToolbar').innerHTML = `
       <input class="sbox" id="libreSearchInput" type="text"
@@ -416,24 +613,129 @@ function renderLibre() {
       <span class="rowcnt-lbl" id="libreCount"></span>
       <button class="btn-exp" onclick="exportLibre()">↓ CSV</button>`;
   }
-
   renderLibreTable();
 }
 
+// ── Tarjetas personalizadas: crear, aplicar, eliminar ────────────
+
+function openAddLibreCard() {
+  const current = { threshold: freeThreshold, almacen: freeAlmacen, type: freeType, palet: freePalet };
+  const dup = (CFG.libreCards || []).find(c =>
+    c.filters.threshold === current.threshold &&
+    c.filters.almacen   === current.almacen   &&
+    c.filters.type      === current.type      &&
+    c.filters.palet     === current.palet
+  );
+  if (dup) {
+    showToast(`Ya existe una tarjeta con estos filtros: "${dup.icon} ${dup.name}"`);
+    return;
+  }
+  _lcardIcon = _LCARD_ICONS[0];
+  document.getElementById('lcardName').value = '';
+  document.getElementById('lcardIcons').innerHTML = _LCARD_ICONS.map(ic =>
+    `<button class="lcard-icon-btn${ic === _lcardIcon ? ' sel' : ''}" onclick="selectLcardIcon('${ic}')">${ic}</button>`
+  ).join('');
+  document.getElementById('libreCardModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('lcardName').focus(), 50);
+}
+
+function selectLcardIcon(icon) {
+  _lcardIcon = icon;
+  document.querySelectorAll('.lcard-icon-btn').forEach(b =>
+    b.classList.toggle('sel', b.textContent === icon)
+  );
+}
+
+function closeLibreCardModal() {
+  document.getElementById('libreCardModal').style.display = 'none';
+}
+
+function confirmLibreCard() {
+  const name = (document.getElementById('lcardName').value || '').trim();
+  if (!name) { document.getElementById('lcardName').focus(); return; }
+  const id = Date.now().toString();
+  if (_cardMode === 'bye') {
+    CFG.byeCards = [...(CFG.byeCards || []), {
+      id, name, icon: _lcardIcon,
+      filters: { almacen: byeAlmacen, stock: byeStock, pv: byePV, dateFrom: byeDateFrom, dateTo: byeDateTo }
+    }];
+    savePreferences(selectedStore, 'bye', CFG);
+    closeLibreCardModal(); renderByeCards();
+  } else if (_cardMode === 'arts') {
+    CFG.artsCards = [...(CFG.artsCards || []), {
+      id, name, icon: _lcardIcon,
+      filters: {
+        vmin: parseFloat(document.getElementById('fVmin')?.value) || 0,
+        ventaMode,
+        loc:  document.getElementById('fLoc2')?.value  || '',
+        surt: document.getElementById('fSurt')?.value  || '',
+        repo: document.getElementById('fRepo')?.value  || '',
+        vol:  document.getElementById('fVol')?.value   || '',
+        peso: document.getElementById('fPeso')?.value  || '',
+      }
+    }];
+    savePreferences(selectedStore, 'arts', CFG);
+    closeLibreCardModal(); renderArtsCards();
+  } else if (_cardMode === 'pesados') {
+    CFG.pesadosCards = [...(CFG.pesadosCards || []), {
+      id, name, icon: _lcardIcon,
+      filters: { almacen: pesadosAlmacen, pesoMin: pesadosPesoMin, rotMin: pesadosRotMin }
+    }];
+    savePreferences(selectedStore, 'pesados', CFG);
+    closeLibreCardModal(); renderPesadosCards();
+  } else {
+    CFG.libreCards = [...(CFG.libreCards || []), {
+      id, name, icon: _lcardIcon,
+      filters: { threshold: freeThreshold, almacen: freeAlmacen, type: freeType, palet: freePalet }
+    }];
+    savePreferences(selectedStore, 'libre', CFG);
+    closeLibreCardModal(); renderLibreCards();
+  }
+}
+
+function deleteLibreCard(id) {
+  const card = (CFG.libreCards || []).find(c => c.id === id);
+  if (!card) return;
+  showConfirm(
+    `Se eliminará "${card.icon} ${card.name}". Esta acción no se puede deshacer.`,
+    () => {
+      CFG.libreCards = (CFG.libreCards || []).filter(c => c.id !== id);
+      if (_activeLibreCard === id) _activeLibreCard = null;
+      savePreferences(selectedStore, 'libre', CFG);
+      renderLibreCards();
+    }
+  );
+}
+
+function applyLibreCard(id) {
+  const card = (CFG.libreCards || []).find(c => c.id === id);
+  if (!card) return;
+  const f      = card.filters;
+  freeThreshold    = f.threshold;
+  freeAlmacen      = f.almacen  || '';
+  freeType         = f.type     || '';
+  freePalet        = f.palet    || '';
+  _activeLibreCard = id;
+  // Sincronizar sidebar visualmente
+  const _r  = document.getElementById('freeThresholdRange');
+  const _v  = document.getElementById('freeThresholdVal');
+  const _cv = document.getElementById('freeThresholdCselVal');
+  if (_r)  { _r.value = f.threshold; _r.style.setProperty('--pct', f.threshold + '%'); }
+  if (_v)  _v.textContent  = f.threshold + '%';
+  if (_cv) _cv.textContent = f.threshold + '% libre';
+  setCselValue('freeAlmacenSel',   freeAlmacen);
+  setCselValue('freeTypeSel',      freeType);
+  setCselValue('freePaletSel',     freePalet);
+  renderLibre();
+}
+
 function renderLibreTable() {
-  const list        = computeLibre(freeThreshold, freeAlmacen);
+  const list        = computeLibre(freeThreshold, freeAlmacen, freeType);
   const withDerived = list.map(f => ({ ...f, pctLibre: f.pctUsado === null ? null : 100 - f.pctUsado }));
 
-  let base = withDerived;
-  if (libreCardFilter === 'picking-c')   base = base.filter(f => f.lt === 'picking' && f.almacen === 'CENTRAL');
-  if (libreCardFilter === 'suelo-c')     base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'CENTRAL');
-  if (libreCardFilter === 'picking-a')   base = base.filter(f => f.lt === 'picking' && f.almacen === 'AUXILIAR1');
-  if (libreCardFilter === 'suelo-a')     base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'AUXILIAR1');
-  if (libreCardFilter === 'pallet-libre') base = base.filter(f => f.lt === 'suelo' && f.palletsFree > 0);
-
   const filtered = libreSearch
-    ? base.filter(f => matchTerms(libreSearch, [f.c, f.almacen, f.lt]))
-    : base;
+    ? withDerived.filter(f => matchTerms(libreSearch, [f.c, f.almacen, f.lt]))
+    : withDerived;
 
   const cnt = document.getElementById('libreCount');
   if (cnt) cnt.textContent = filtered.length.toLocaleString() + ' registros';
@@ -455,7 +757,7 @@ function renderLibreTable() {
       const estado  = vacio
         ? '<span class="badge b-gn">✓ Vacío</span>'
         : `<span class="badge b-bl">◐ ${f.arts.length} art. · ${pctLTxt} libre</span>`;
-      return `<tr>
+      return `<tr class="row-clickable" onclick="openShelfFromView('libre',${f.p},${f.e},'${f.almacen}')">
         <td style="color:${f.almacen === 'AUXILIAR1' ? 'var(--aux-lbl)' : 'var(--b2)'};font-weight:600">${f.c}</td>
         <td><span class="badge ${f.almacen === 'AUXILIAR1' ? 'b-pu' : 'b-bl'}">${f.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central'}</span></td>
         <td>P${f.p}</td>
@@ -490,54 +792,184 @@ function fmtDate(d) {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
+function resolveDateSentinel(val) {
+  if (!val) return null;
+  const d = new Date();
+  if (val === 'TODAY-1') { d.setDate(d.getDate() - 1); return d; }
+  if (val === 'TODAY+1') { d.setDate(d.getDate() + 1); return d; }
+  if (val === 'TODAY')   { return d; }
+  return new Date(val);
+}
+
+function _updateByeDateBtns() {
+  const map = { 'From': { ayer:'byeFromAyer', man:'byeFromManana', val: byeDateFrom },
+                'To':   { ayer:'byeToAyer',   man:'byeToManana',   val: byeDateTo   }};
+  Object.values(map).forEach(({ ayer, man, val }) => {
+    document.getElementById(ayer)?.classList.toggle('btn-fecha-act', val === 'TODAY-1');
+    document.getElementById(man) ?.classList.toggle('btn-fecha-act', val === 'TODAY+1');
+  });
+}
+
+function _showSentinelLabel(which, sentinel) {
+  const label = sentinel === 'TODAY-1' ? 'Ayer' : 'Mañana';
+  document.getElementById('bye' + which + 'Input').style.display      = 'none';
+  document.getElementById('bye' + which + 'Label').style.display      = 'flex';
+  document.getElementById('bye' + which + 'LabelText').textContent    = label;
+}
+
+function clearByeDate(which) {
+  if (which === 'From') { byeDateFrom = ''; } else { byeDateTo = ''; }
+  const input = document.getElementById('bye' + which + 'Input');
+  const lbl   = document.getElementById('bye' + which + 'Label');
+  if (input) { input.style.display = ''; input.value = ''; }
+  if (lbl)   lbl.style.display = 'none';
+  _activeByeCard = null;
+  _updateByeDateBtns();
+  renderBye();
+}
+
+function setByeDate(which, sentinel) {
+  if (which === 'From') { byeDateFrom = sentinel; } else { byeDateTo = sentinel; }
+  _showSentinelLabel(which, sentinel);
+  _activeByeCard = null;
+  _updateByeDateBtns();
+  renderBye();
+}
+
+function computeBye(almacen, stock, pv, dateFrom, dateTo) {
+  const from = resolveDateSentinel(dateFrom);
+  const to   = resolveDateSentinel(dateTo);
+  return BYE.filter(b => {
+    if (almacen && b.almacen !== almacen) return false;
+    if (stock === 'con' && !(b.st > 0))   return false;
+    if (stock === 'sin' &&   b.st > 0)    return false;
+    if (pv    === 'con' && !(b.pv > 0))   return false;
+    if (pv    === 'sin' &&   b.pv > 0)    return false;
+    if (from && b.endsale && b.endsale < from) return false;
+    if (to   && b.endsale) {
+      const toEnd = new Date(to); toEnd.setHours(23, 59, 59);
+      if (b.endsale > toEnd) return false;
+    }
+    return true;
+  });
+}
+
+function setByeAlmacen(val) { byeAlmacen = val; _activeByeCard = null; renderBye(); }
+function setByeStock(val)   { byeStock   = val; _activeByeCard = null; renderBye(); }
+function setByePV(val)      { byePV      = val; _activeByeCard = null; renderBye(); }
+function setByeDateFrom(val) {
+  byeDateFrom = val || '';
+  document.getElementById('byeFromLabel').style.display = 'none';
+  document.getElementById('byeFromInput').style.display = '';
+  _activeByeCard = null; _updateByeDateBtns(); renderBye();
+}
+function setByeDateTo(val) {
+  byeDateTo = val || '';
+  document.getElementById('byeToLabel').style.display = 'none';
+  document.getElementById('byeToInput').style.display = '';
+  _activeByeCard = null; _updateByeDateBtns(); renderBye();
+}
+
 function filterBye(q) {
   byeSearch = (q || '').trim().toLowerCase();
   renderByeTable();
 }
 
-function setByeCardFilter(key) {
-  byeCardFilter = byeCardFilter === key ? '' : key;
-  renderByeTable();
-  document.querySelectorAll('#byeCards .card-click').forEach(c =>
-    c.classList.toggle('act-card', c.dataset.key === byeCardFilter)
+// ── Tarjetas personalizadas Bye ───────────────────────────────────
+let _activeByeCard = null;
+let _cardMode      = 'libre'; // 'libre' | 'bye' — controla qué guardar al confirmar modal
+
+function renderByeCards() {
+  const cards = (CFG.byeCards || []).map(card => {
+    const f     = card.filters;
+    const count = computeBye(f.almacen, f.stock, f.pv, f.dateFrom, f.dateTo).length;
+    const chips = [];
+    if (f.almacen)  chips.push(f.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central');
+    if (f.stock)    chips.push(f.stock === 'con' ? 'Con stock' : 'Sin stock');
+    if (f.pv)       chips.push(f.pv    === 'con' ? 'Con PV'    : 'Sin PV');
+    const dateLabel = v => v === 'TODAY-1' ? 'Ayer' : v === 'TODAY' ? 'Hoy' : v === 'TODAY+1' ? 'Mañana' : v.slice(5).split('-').reverse().join('/');
+    if (f.dateFrom) chips.push('Desde ' + dateLabel(f.dateFrom));
+    if (f.dateTo)   chips.push('Hasta ' + dateLabel(f.dateTo));
+    if (!chips.length) chips.push('Todos');
+    const isAct = _activeByeCard === card.id;
+    return `<div class="card card-click${isAct ? ' act-card' : ''}" style="position:relative" onclick="applyByeCard('${card.id}')">
+      <button class="card-del-btn" title="Eliminar tarjeta" onclick="event.stopPropagation();deleteByeCard('${card.id}')">×</button>
+      <div class="clbl">${card.icon} ${card.name}</div>
+      <div class="cval" style="color:var(--mu)">${count}</div>
+      <div class="csub">${chips.join(' · ')}</div>
+    </div>`;
+  }).join('');
+
+  const addBtn = (CFG.byeCards || []).length < 10
+    ? `<div class="card-add" onclick="openAddByeCard()"><div>+</div><div style="font-size:11px;margin-top:3px">Nueva tarjeta</div></div>`
+    : '';
+  document.getElementById('byeCards').innerHTML = cards + addBtn;
+}
+
+function openAddByeCard() {
+  const current = { almacen: byeAlmacen, stock: byeStock, pv: byePV, dateFrom: byeDateFrom, dateTo: byeDateTo };
+  const dup = (CFG.byeCards || []).find(c =>
+    c.filters.almacen   === current.almacen  &&
+    c.filters.stock     === current.stock    &&
+    c.filters.pv        === current.pv       &&
+    c.filters.dateFrom  === current.dateFrom &&
+    c.filters.dateTo    === current.dateTo
+  );
+  if (dup) { showToast(`Ya existe una tarjeta con estos filtros: "${dup.icon} ${dup.name}"`); return; }
+  _cardMode  = 'bye';
+  _lcardIcon = _LCARD_ICONS[0];
+  document.getElementById('lcardName').value = '';
+  document.getElementById('lcardIcons').innerHTML = _LCARD_ICONS.map(ic =>
+    `<button class="lcard-icon-btn${ic === _lcardIcon ? ' sel' : ''}" onclick="selectLcardIcon('${ic}')">${ic}</button>`
+  ).join('');
+  document.getElementById('libreCardModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('lcardName').focus(), 50);
+}
+
+function deleteByeCard(id) {
+  const card = (CFG.byeCards || []).find(c => c.id === id);
+  if (!card) return;
+  showConfirm(
+    `Se eliminará "${card.icon} ${card.name}". Esta acción no se puede deshacer.`,
+    () => {
+      CFG.byeCards = (CFG.byeCards || []).filter(c => c.id !== id);
+      if (_activeByeCard === id) _activeByeCard = null;
+      savePreferences(selectedStore, 'bye', CFG);
+      renderByeCards();
+    }
   );
 }
 
+function applyByeCard(id) {
+  const card = (CFG.byeCards || []).find(c => c.id === id);
+  if (!card) return;
+  const f      = card.filters;
+  byeAlmacen   = f.almacen  || '';
+  byeStock     = f.stock    || '';
+  byePV        = f.pv       || '';
+  byeDateFrom  = f.dateFrom || '';
+  byeDateTo    = f.dateTo   || '';
+  _activeByeCard = id;
+  setCselValue('byeAlmacenSel', byeAlmacen);
+  setCselValue('byeStockSel',   byeStock);
+  setCselValue('byePVSel',      byePV);
+  ['From','To'].forEach(which => {
+    const val = which === 'From' ? byeDateFrom : byeDateTo;
+    if (val === 'TODAY-1' || val === 'TODAY+1') {
+      _showSentinelLabel(which, val);
+    } else {
+      const input = document.getElementById('bye' + which + 'Input');
+      const lbl   = document.getElementById('bye' + which + 'Label');
+      if (input) { input.style.display = ''; input.value = val || ''; }
+      if (lbl)   lbl.style.display = 'none';
+    }
+  });
+  _updateByeDateBtns();
+  renderBye();
+}
+
 function renderBye() {
-  const bc       = BYE.filter(b => b.almacen === 'CENTRAL').length;
-  const ba       = BYE.filter(b => b.almacen === 'AUXILIAR1').length;
-  const conStock = BYE.filter(b => (b.st > 0 || b.pv > 0)).length;
-  const sinStock = BYE.filter(b => (b.st <= 0 && b.pv <= 0)).length;
-
-  const cardAct = key => byeCardFilter === key ? ' act-card' : '';
-
-  document.getElementById('byeCards').innerHTML = `
-    <div class="card card-click${cardAct('')}" data-key="" onclick="setByeCardFilter('')">
-      <div class="clbl">Total NS con localización</div>
-      <div class="cval" style="color:var(--mu)">${BYE.length}</div>
-      <div class="csub">artículos fuera de surtido aún ubicados</div>
-    </div>
-    <div class="card card-click${cardAct('central')}" data-key="central" onclick="setByeCardFilter('central')">
-      <div class="clbl">Central</div>
-      <div class="cval" style="color:var(--b2)">${bc}</div>
-      <div class="csub">localizaciones</div>
-    </div>
-    <div class="card card-click${cardAct('aux')}" data-key="aux" onclick="setByeCardFilter('aux')">
-      <div class="clbl">Auxiliar1</div>
-      <div class="cval" style="color:var(--aux-lbl)">${ba}</div>
-      <div class="csub">localizaciones</div>
-    </div>
-    <div class="card card-click${cardAct('con-stock')}" data-key="con-stock" onclick="setByeCardFilter('con-stock')">
-      <div class="clbl">📦 Con stock o PV</div>
-      <div class="cval" style="color:var(--or)">${conStock}</div>
-      <div class="csub">mantener ubicación</div>
-    </div>
-    <div class="card card-click${cardAct('sin-stock')}" data-key="sin-stock" onclick="setByeCardFilter('sin-stock')">
-      <div class="clbl">⬜ Sin stock ni PV</div>
-      <div class="cval" style="color:var(--gn)">${sinStock}</div>
-      <div class="csub">candidatos a liberar</div>
-    </div>`;
-
+  renderByeCards();
   if (!document.getElementById('byeSearchInput')) {
     document.getElementById('byeToolbar').innerHTML = `
       <input class="sbox" id="byeSearchInput" type="text"
@@ -546,16 +978,11 @@ function renderBye() {
       <span class="rowcnt-lbl" id="byeCount"></span>
       <button class="btn-exp" onclick="exportBye()">↓ CSV</button>`;
   }
-
   renderByeTable();
 }
 
 function renderByeTable() {
-  let base = BYE;
-  if (byeCardFilter === 'central')   base = base.filter(b => b.almacen === 'CENTRAL');
-  if (byeCardFilter === 'aux')       base = base.filter(b => b.almacen === 'AUXILIAR1');
-  if (byeCardFilter === 'con-stock') base = base.filter(b => b.st > 0 || b.pv > 0);
-  if (byeCardFilter === 'sin-stock') base = base.filter(b => b.st <= 0 && b.pv <= 0);
+  let base = computeBye(byeAlmacen, byeStock, byePV, byeDateFrom, byeDateTo);
 
   const filtered = byeSearch
     ? base.filter(b => matchTerms(byeSearch, [b.i, b.d, b.loc]))
@@ -568,7 +995,7 @@ function renderByeTable() {
 
   const rows = sorted.map(b => {
     const tieneStock = b.st > 0 || b.pv > 0;
-    return `<tr>
+    return `<tr class="row-clickable" onclick="openArtDetail('${b.i}')">
     <td style="color:${b.almacen === 'AUXILIAR1' ? 'var(--aux-lbl)' : 'var(--b2)'};font-weight:600">${b.loc}</td>
     <td><span class="badge ${b.almacen === 'AUXILIAR1' ? 'b-pu' : 'b-bl'}">${b.almacen === 'AUXILIAR1' ? 'Aux1' : 'Central'}</span></td>
     <td>${b.i}</td>
@@ -579,6 +1006,7 @@ function renderByeTable() {
     <td style="color:${b.pe > CFG.pesado ? 'var(--or)' : 'var(--tx)'}">${b.pe > 0 ? b.pe + ' kg' : '—'}</td>
     <td style="font-weight:600;color:${b.st > 0 ? 'var(--b2)' : 'var(--mu)'}">${b.st > 0 ? b.st.toLocaleString() : '—'}</td>
     <td style="font-weight:600;color:${b.pv > 0 ? 'var(--or)' : 'var(--mu)'}">${b.pv > 0 ? b.pv.toLocaleString() : '—'}</td>
+    <td style="color:var(--mu)">${fmtDate(b.startsale)}</td>
     <td style="font-weight:600;color:${b.endsale ? 'var(--or)' : 'var(--mu)'}">${fmtDate(b.endsale)}</td>
     <td>${tieneStock
       ? '<span class="badge b-or">Mantener</span>'
@@ -592,9 +1020,9 @@ function renderByeTable() {
       ${th('bye','d','Descripción')}${th('bye','mx','Max')}${th('bye','mn','Min')}
       ${th('bye','s','Vta/mes')}${th('bye','pe','Peso')}
       ${th('bye','st','Stock')}${th('bye','pv','PV')}
-      ${th('bye','endsale','Fin venta')}<th>Acción</th>
+      ${th('bye','startsale','Inicio venta')}${th('bye','endsale','Fin venta')}<th>Acción</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="12" style="text-align:center;color:var(--gn);padding:28px">✓ Sin artículos NS con localización asignada</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="13" style="text-align:center;color:var(--gn);padding:28px">✓ Sin artículos NS con localización asignada</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -613,10 +1041,7 @@ function csvDownload(filename, hdr, rows) {
 }
 
 function exportPesados() {
-  let base = HEAVY;
-  if (pesadosCardFilter === 'picking') base = base.filter(b => b.lt === 'picking');
-  if (pesadosCardFilter === 'central') base = base.filter(b => b.almacen === 'CENTRAL');
-  if (pesadosCardFilter === 'aux')     base = base.filter(b => b.almacen === 'AUXILIAR1');
+  let base = computePesados(pesadosAlmacen, pesadosPesoMin, pesadosRotMin);
 
   const hdr  = ['Localización','Almacén','Tipo','Artículo','Descripción','Peso kg','Vta/mes'];
   const rows = sortArrBy(base, sortStates.pesados.k, sortStates.pesados.d)
@@ -625,7 +1050,7 @@ function exportPesados() {
 }
 
 function exportLibre() {
-  let base = computeLibre(freeThreshold, freeAlmacen);
+  let base = computeLibre(freeThreshold, freeAlmacen, freeType);
   if (libreCardFilter === 'picking-c')    base = base.filter(f => f.lt === 'picking' && f.almacen === 'CENTRAL');
   if (libreCardFilter === 'suelo-c')      base = base.filter(f => f.lt === 'suelo'   && f.almacen === 'CENTRAL');
   if (libreCardFilter === 'picking-a')    base = base.filter(f => f.lt === 'picking' && f.almacen === 'AUXILIAR1');
@@ -646,11 +1071,7 @@ function exportLibre() {
 }
 
 function exportBye() {
-  let base = BYE;
-  if (byeCardFilter === 'central')   base = base.filter(b => b.almacen === 'CENTRAL');
-  if (byeCardFilter === 'aux')       base = base.filter(b => b.almacen === 'AUXILIAR1');
-  if (byeCardFilter === 'con-stock') base = base.filter(b => b.st > 0 || b.pv > 0);
-  if (byeCardFilter === 'sin-stock') base = base.filter(b => b.st <= 0 && b.pv <= 0);
+  let base = computeBye(byeAlmacen, byeStock, byePV, byeDateFrom, byeDateTo);
 
   const hdr  = ['Localización','Almacén','Artículo','Descripción','Max','Min','Vta/mes','Peso kg','Stock','PV','Fin venta'];
   const rows = sortArrBy(base, sortStates.bye.k, sortStates.bye.d)

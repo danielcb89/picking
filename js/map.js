@@ -55,7 +55,9 @@ function toggleLegendLayer(el) {
     el.classList.toggle('leg-off', !LEGEND_LAYERS[layer]);
   }
 
-  renderLayoutMap(currentLayout);
+  if (document.getElementById('p-mapa').classList.contains('act')) {
+    renderLayoutMap(currentLayout);
+  }
 }
 
 // Calcula la venta mensual total de una estantería (suma de todos sus artículos con loc)
@@ -202,8 +204,16 @@ function cellClass(p, e, alm) {
   const allLocs = [...(est.s || []), ...(est.pk || [])];
   if (!allLocs.length) return 'cs-f';
 
-  // ¿Está en top N baja rotación?
   const allCodes = allLocs.map(l => l.c);
+
+  // Prioridad: pallet → low → high → ns
+  // ¿Tiene algún suelo con pallet libre?
+  if (LEGEND_LAYERS.pallet) {
+    const sueloCodes = (est.s || []).map(l => l.c);
+    if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
+  }
+
+  // ¿Está en top N baja rotación?
   if (LEGEND_LAYERS.low) {
     const lowSuelo = alm === 'AUXILIAR1' ? LOW_ROT.asuelo : LOW_ROT.csuelo;
     const lowPick  = alm === 'AUXILIAR1' ? LOW_ROT.apick  : LOW_ROT.cpick;
@@ -215,12 +225,6 @@ function cellClass(p, e, alm) {
     const highSuelo = alm === 'AUXILIAR1' ? HIGH_ROT.asuelo : HIGH_ROT.csuelo;
     const highPick  = alm === 'AUXILIAR1' ? HIGH_ROT.apick  : HIGH_ROT.cpick;
     if (allCodes.some(c => highSuelo.has(c) || highPick.has(c))) return 'x-high';
-  }
-
-  // ¿Tiene algún suelo con pallet libre?
-  if (LEGEND_LAYERS.pallet) {
-    const sueloCodes = (est.s || []).map(l => l.c);
-    if (sueloCodes.some(c => FLOOR_FREE.has(c))) return 'x-pallet';
   }
 
   // ¿Tiene algún artículo fuera de surtido (NS)?
@@ -642,21 +646,19 @@ function showArtCard(artId) {
     }
     if (hit) el.classList.add('map-highlight');
   });
-  // Scroll a la primera celda encontrada
   const first = document.querySelector('.loc-cell.map-highlight');
   if (first) first.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+
   const fmt  = d => d ? d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'}) : null;
   const val  = v => (v !== null && v !== undefined && v !== 0 && v !== '') ? v : null;
   const row  = (label, value, extra) => value !== null && value !== undefined
     ? `<div class="ac-row"><span class="ac-lbl">${label}</span><span class="ac-val">${value}${extra||''}</span></div>`
     : '';
 
-  // Surtido badge
   const surtBadge = a.a === 'S'  ? '<span class="badge b-gn">En surtido</span>'
                   : a.a === 'NS' ? '<span class="badge b-gy">Fuera de surtido</span>'
                   : `<span class="badge b-bl">${a.a||'—'}</span>`;
 
-  // Localización Central
   let locC = '';
   if (a.lc) {
     locC = `<div class="ac-loc-block">
@@ -667,7 +669,6 @@ function showArtCard(artId) {
     </div>`;
   }
 
-  // Localización Aux1
   let locA = '';
   if (a.la) {
     locA = `<div class="ac-loc-block">
@@ -681,32 +682,28 @@ function showArtCard(artId) {
   const html = `
     <div class="art-card">
       <button class="ac-back" onclick="mapSideBack()">← Volver a resultados</button>
-
-      <!-- Espacio para foto futura -->
-      <div class="ac-photo-placeholder">
-        <span>📷</span>
-        <span>Foto del artículo</span>
+      <div class="ac-photo-placeholder" id="ac-photo-${a.i}">
+        <span class="ac-photo-spinner">⏳</span>
       </div>
-
-      <!-- Identificación -->
       <div class="ac-section">
         <div class="ac-section-title">Identificación</div>
         ${row('Código', `<strong>${a.i}</strong>`)}
         ${row('Descripción', a.d)}
         ${row('Surtido', surtBadge)}
+        ${a.hfb ? row('HFB', a.hfb) : ''}
+        ${a.fam ? row('FAM', a.fam) : ''}
       </div>
-
-      <!-- Físico -->
       <div class="ac-section">
         <div class="ac-section-title">Físico</div>
         ${row('Uds/pallet', val(a.pl))}
-        ${row('Tipo', a.wc)}
-        ${row('Peso', val(a.pe), ' kg')}
-        ${row('Volumen', val(a.vo), ' dm³')}
+        ${row('Volumen', `<span class="badge ${wcls(a.wc)}" style="font-size:11px">${a.wc}</span> ${val(a.vo)} dm³`)}
+        ${row('Peso', `<span class="badge ${pcls_w(a.pc)}" style="font-size:11px">${a.pc}</span> ${val(a.pe)} kg`)}
         ${row('MDQ', val(a.md))}
       </div>
-
-      <!-- Ventas -->
+      <div class="ac-section" id="ac-bultos-${a.i}">
+        <div class="ac-section-title">Embalaje</div>
+        <div class="ac-row"><span class="ac-lbl" style="color:var(--mu)">Cargando...</span></div>
+      </div>
       <div class="ac-section">
         <div class="ac-section-title">Ventas</div>
         ${row('Vta/mes', val(a.s), ' uds')}
@@ -715,14 +712,10 @@ function showArtCard(artId) {
         ${row('Inicio venta', fmt(a.ss))}
         ${row('Fin venta', fmt(a.es))}
       </div>
-
-      <!-- Localización -->
       ${(a.lc || a.la) ? `<div class="ac-section">
         <div class="ac-section-title">Localización</div>
         ${locC}${locA}
       </div>` : ''}
-
-      <!-- Stock -->
       <div class="ac-section">
         <div class="ac-section-title">Stock</div>
         ${row('Stock total', val(a.st), ' uds')}
@@ -730,10 +723,285 @@ function showArtCard(artId) {
       </div>
     </div>`;
 
-  // Guardar el HTML de la lista para poder volver
   const cont = document.getElementById('mapSideContent');
   cont._listHTML = cont.innerHTML;
   cont.innerHTML = html;
+
+  _loadWtsData(a.i);
+}
+
+async function _loadWtsData(artId) {
+  const photoEl = document.getElementById(`ac-photo-${artId}`);
+  const bultosEl = document.getElementById(`ac-bultos-${artId}`);
+  // ponytail: worker CF hace de proxy para ikea.com (CORS), foto via API pública
+  const PROXY = 'https://throbbing-poetry-f00b.danielcb89.workers.dev/?url=';
+
+  try {
+    // 1. Foto via API pública (sin CORS)
+    const srResp = await fetch(`https://sik.search.blue.cdtapps.com/es/es/search-result-page?q=${artId}&size=1`);
+    if (srResp.ok) {
+      const srData = await srResp.json();
+      const item = srData?.searchResultPage?.products?.main?.items?.[0]?.product;
+      if (photoEl) {
+        if (item?.mainImageUrl) {
+          photoEl.innerHTML = `<img src="${item.mainImageUrl}" alt="${item.name || ''}"
+            style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+        } else {
+          photoEl.innerHTML = '<span>📷</span><span>Sin foto</span>';
+        }
+      }
+
+      // 2. Paquetes y medidas via Worker → pipUrl de ikea.com
+      if (item?.pipUrl && bultosEl) {
+        const pipResp = await fetch(PROXY + encodeURIComponent(item.pipUrl));
+        if (pipResp.ok) {
+          const html = await pipResp.text();
+          // ponytail: buscar "packaging":{ y extraer el objeto con depth counter
+          const pkgIdx = html.indexOf('"packaging":{"numberOfPackages"');
+          if (pkgIdx !== -1) {
+            try {
+              const start = pkgIdx + '"packaging":'.length;
+              const chunk = html.slice(start);
+              let depth = 0, end = -1;
+              for (let ci = 0; ci < chunk.length; ci++) {
+                if (chunk[ci] === '{') depth++;
+                else if (chunk[ci] === '}') { depth--; if (depth === 0) { end = ci; break; } }
+              }
+              const pkg = JSON.parse(end !== -1 ? chunk.slice(0, end + 1) : chunk);
+              const numBultos = pkg.numberOfPackages;
+              const grupos = pkg.packages[0]?.measurementGroups || [];
+              const multiGroup = grupos.length > 1;
+              let html2 = `<div class="ac-section-title">Embalaje</div>
+                <div class="ac-row"><span class="ac-lbl">Bultos</span><span class="ac-val">${numBultos} bulto${numBultos !== 1 ? 's' : ''}</span></div>`;
+              grupos.forEach((g, i) => {
+                if (multiGroup) {
+                  html2 += `<div class="ac-loc-title" style="margin-top:6px;font-weight:600">${g.heading || ('Bulto ' + (i+1) + ' de ' + numBultos)}</div>`;
+                }
+                g.measurements.forEach(m => {
+                  html2 += `<div class="ac-row"><span class="ac-lbl">${m.label}</span><span class="ac-val">${m.text}</span></div>`;
+                });
+              });
+              bultosEl.innerHTML = html2;
+            } catch(e) { bultosEl.innerHTML = '<div class="ac-section-title">Embalaje</div><div class="ac-row"><span class="ac-lbl">No disponible</span></div>'; }
+          } else {
+            bultosEl.innerHTML = '<div class="ac-section-title">Embalaje</div><div class="ac-row"><span class="ac-lbl">No disponible</span></div>';
+          }
+        }
+      }
+    }
+  } catch (_) {
+    if (photoEl) photoEl.innerHTML = '<span>📷</span><span>Sin foto</span>';
+  }
+}
+
+// ── FICHA DE ARTÍCULO (panel completo, desde tablas) ────────────
+
+let _adpFromView = null;
+const VIEWS_ALL = ['mapa','arts','libre','bye','pesados','ajustes','artdetail'];
+
+function openArtDetail(artId) {
+  const a = ARTS.find(x => x.i === artId);
+  if (!a) return;
+
+  // Detectar la vista activa para poder volver
+  _adpFromView = VIEWS_ALL.find(v => v !== 'artdetail' &&
+    document.getElementById('p-' + v)?.classList.contains('act')) || 'arts';
+
+  // Activar el panel de detalle igual que gotoView
+  VIEWS_ALL.forEach(x => {
+    document.getElementById('p-' + x)?.classList.toggle('act', x === 'artdetail');
+    document.getElementById('n-' + x)?.classList.toggle('act', x === 'artdetail');
+  });
+  document.getElementById('sb-arts').style.display  = 'none';
+  document.getElementById('sb-libre').style.display = 'none';
+
+  document.getElementById('adpArtId').textContent = a.i;
+
+  const fmt = d => d ? d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'}) : null;
+  const val = v => (v !== null && v !== undefined && v !== 0 && v !== '') ? v : null;
+  const row = (lbl, v, unit) => v !== null && v !== undefined
+    ? `<div class="adp-row"><span class="adp-row-lbl">${lbl}</span><span class="adp-row-val">${v}${unit||''}</span></div>`
+    : '';
+  const metric = (lbl, v, unit, color) => v !== null && v !== undefined && v !== 0 && v !== ''
+    ? `<div class="adp-metric">
+        <div class="adp-metric-lbl">${lbl}</div>
+        <div class="adp-metric-val" ${color ? `style="color:${color}"` : ''}>${v}</div>
+        ${unit ? `<div class="adp-metric-unit">${unit}</div>` : ''}
+       </div>`
+    : '';
+
+  const surtBadge = a.a === 'S'  ? '<span class="badge b-gn" style="font-size:12px;padding:4px 10px">En surtido</span>'
+                  : a.a === 'NS' ? '<span class="badge b-gy" style="font-size:12px;padding:4px 10px">Fuera de surtido</span>'
+                  : `<span class="badge b-bl" style="font-size:12px;padding:4px 10px">${a.a||'—'}</span>`;
+  const tipoBadge = (a.wc ? `<span class="badge ${wcls(a.wc)}" style="font-size:12px;padding:4px 10px">${a.wc}</span>` : '')
+                  + (a.pc ? `<span class="badge ${pcls_w(a.pc)}" style="font-size:12px;padding:4px 10px">${a.pc}</span>` : '');
+
+  // Localización
+  let locHtml = '';
+  if (a.lc || a.la) {
+    const locC = a.lc ? `<div class="adp-loc-block">
+      <div class="adp-loc-title" style="color:var(--b2)">📦 Central</div>
+      <div class="adp-loc-code" style="color:var(--b2)">${a.lc}</div>
+      <div class="adp-loc-minmax">Máx ${a.mx||'—'} · Mín ${a.mn||'—'} uds</div>
+    </div>` : '';
+    const locA = a.la ? `<div class="adp-loc-block aux">
+      <div class="adp-loc-title" style="color:var(--aux-lbl)">📦 Auxiliar1</div>
+      <div class="adp-loc-code" style="color:var(--aux-lbl)">${a.la}</div>
+      <div class="adp-loc-minmax">Máx ${a.mxa||'—'} · Mín ${a.mna||'—'} uds</div>
+    </div>` : '';
+    locHtml = `<div class="adp-section">
+      <div class="adp-section-title">Localización</div>
+      <div class="adp-loc-grid">${locC}${locA}</div>
+    </div>`;
+  }
+
+  const S = {
+    row:    'display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid rgba(160,180,200,.18);font-size:12px',
+    rowLbl: 'color:var(--mu)',
+    rowVal: 'font-weight:600;color:var(--tx)',
+  };
+  const card  = (title, body) => `<div class="adp-card"><div class="adp-hdr">${title}</div>${body}</div>`;
+  const drow  = (lbl, v, unit, color) => v !== null && v !== undefined
+    ? `<div style="${S.row}"><span style="${S.rowLbl}">${lbl}</span><span style="${S.rowVal};${color?'color:'+color:''}">${v}${unit||''}</span></div>` : '';
+
+  const metricHtml = (lbl, v, unit, color) => v !== null && v !== undefined && v !== 0 && v !== ''
+    ? `<div style="padding:14px 16px;border-right:1px solid var(--win-border-light);border-bottom:1px solid var(--win-border-light);display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--mu)">${lbl}</div>
+        <div style="font-size:26px;font-weight:800;line-height:1;color:${color||'var(--tx)'}">${v}</div>
+        ${unit ? `<div style="font-size:10px;color:var(--mu)">${unit}</div>` : ''}
+       </div>` : '';
+
+  const locBlock = (lbl, code, max, min, color, isAux) =>
+    `<div style="padding:14px 16px;${isAux?'background:rgba(0,120,100,.05)':''}border-right:1px solid var(--win-border-light)">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:${color};margin-bottom:6px">${lbl}</div>
+      <div style="font-size:24px;font-weight:800;color:${color};margin-bottom:4px">${code}</div>
+      <div style="font-size:11px;color:var(--mu)">Máx <strong>${max||'—'}</strong> · Mín <strong>${min||'—'}</strong> uds</div>
+    </div>`;
+
+  document.getElementById('adpBody').innerHTML = `
+    <div class="adp-card" style="display:grid;grid-template-columns:280px 1fr;gap:0;margin-bottom:16px">
+      <div id="adp-photo-${a.i}" class="adp-photo-bg" style="height:220px;border-right:1px solid var(--win-border-dark);display:flex;align-items:center;justify-content:center;overflow:hidden;padding:12px">
+        <div style="color:var(--mu);font-size:11px;display:flex;flex-direction:column;align-items:center;gap:6px"><span style="font-size:36px;opacity:.25">📷</span><span>Cargando...</span></div>
+      </div>
+      <div style="padding:22px 26px;display:flex;flex-direction:column;justify-content:center;gap:10px">
+        <div style="font-size:11px;color:var(--mu);font-weight:600;letter-spacing:.5px"># ${a.i}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--tx);line-height:1.2">${a.d}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${surtBadge}${tipoBadge}</div>
+        ${(a.hfb || a.fam) ? `<div style="font-size:11px;color:var(--mu);display:flex;gap:16px;margin-top:2px">
+          ${a.hfb ? `<span>HFB&nbsp;<strong style="color:var(--tx)">${a.hfb}</strong></span>` : ''}
+          ${a.fam ? `<span>FAM&nbsp;<strong style="color:var(--tx)">${a.fam}</strong></span>` : ''}
+        </div>` : ''}
+      </div>
+    </div>
+
+    ${card('Datos físicos y ventas',
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
+        ${metricHtml('Uds/pallet', val(a.pl), 'uds')}
+        ${metricHtml('Peso', val(a.pe), 'kg', a.pe > CFG.pesado ? 'var(--or)' : null)}
+        ${metricHtml('Volumen', val(a.vo), 'dm³')}
+        ${metricHtml('MDQ', val(a.md), 'uds')}
+        ${a.sw != null ? metricHtml('Vta/sem', val(a.sw), 'uds') : ''}
+        ${metricHtml('Vta/mes', val(a.s), 'uds', a.s >= CFG.rotacion ? 'var(--gn)' : null)}
+        ${a.sa != null ? metricHtml('Vta/año', val(a.sa), 'uds') : ''}
+        ${metricHtml('Stock total', val(a.st), 'uds')}
+        ${metricHtml('Ped. camino', val(a.pv), 'uds', a.pv > 0 ? 'var(--or)' : null)}
+      </div>`
+    )}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${(a.lc || a.la) ? card('Localización',
+          `<div style="display:grid;grid-template-columns:${a.lc && a.la ? '1fr 1fr' : '1fr'}">
+            ${a.lc ? locBlock('📦 Central', a.lc, a.mx, a.mn, 'var(--b2)', false) : ''}
+            ${a.la ? locBlock('📦 Auxiliar1', a.la, a.mxa, a.mna, 'var(--aux-lbl)', true) : ''}
+          </div>`
+        ) : ''}
+        ${card('Fechas de venta',
+          `<div>${drow('Inicio de venta', fmt(a.ss))}${drow('Fin de venta', fmt(a.es))}</div>`
+        )}
+      </div>
+
+      <div id="adp-bultos-${a.i}" class="adp-card">
+        <div class="adp-hdr">Embalaje</div>
+        <div style="${S.row}"><span style="color:var(--mu)">Cargando desde IKEA...</span></div>
+      </div>
+
+    </div>`;
+
+  _loadWtsDataDetail(a.i);
+}
+
+function closeArtDetail() {
+  const back = _adpFromView || 'arts';
+
+  VIEWS_ALL.forEach(x => {
+    document.getElementById('p-' + x)?.classList.toggle('act', x === back);
+    document.getElementById('n-' + x)?.classList.toggle('act', x === back);
+  });
+  document.getElementById('sb-arts').style.display  = back === 'arts'  ? 'block' : 'none';
+  document.getElementById('sb-libre').style.display = back === 'libre' ? 'block' : 'none';
+  if (back === 'arts')    renderArtsTable();
+  if (back === 'mapa')    renderLayoutMap(currentLayout);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('p-artdetail')?.classList.contains('act')) closeArtDetail();
+});
+
+async function _loadWtsDataDetail(artId) {
+  const panel    = document.getElementById('p-artdetail');
+  const photoEl  = panel.querySelector(`#adp-photo-${artId}`);
+  const bultosEl = panel.querySelector(`#adp-bultos-${artId}`);
+  const PROXY    = 'https://throbbing-poetry-f00b.danielcb89.workers.dev/?url=';
+  try {
+    const srResp = await fetch(`https://sik.search.blue.cdtapps.com/es/es/search-result-page?q=${artId}&size=1`);
+    if (!srResp.ok) throw new Error();
+    const srData = await srResp.json();
+    const item = srData?.searchResultPage?.products?.main?.items?.[0]?.product;
+    if (photoEl) {
+      if (item?.mainImageUrl) {
+        photoEl.innerHTML = `<img src="${item.mainImageUrl}" alt="${item.name||''}" style="width:100%;height:100%;object-fit:contain">`;
+      } else {
+        photoEl.innerHTML = '<div class="adp-hero-placeholder"><span>📷</span><span>Sin foto disponible</span></div>';
+      }
+    }
+    if (item?.pipUrl && bultosEl) {
+      const pipResp = await fetch(PROXY + encodeURIComponent(item.pipUrl));
+      if (pipResp.ok) {
+        const html = await pipResp.text();
+        const pkgIdx = html.indexOf('"packaging":{"numberOfPackages"');
+        if (pkgIdx !== -1) {
+          try {
+            const start = pkgIdx + '"packaging":'.length;
+            const chunk = html.slice(start);
+            let depth = 0, end = -1;
+            for (let ci = 0; ci < chunk.length; ci++) {
+              if (chunk[ci] === '{') depth++;
+              else if (chunk[ci] === '}') { depth--; if (depth === 0) { end = ci; break; } }
+            }
+            const pkg = JSON.parse(end !== -1 ? chunk.slice(0, end + 1) : chunk);
+            const numBultos = pkg.numberOfPackages;
+            const grupos = pkg.packages[0]?.measurementGroups || [];
+            const multiGroup = grupos.length > 1;
+            const RS = 'display:flex;justify-content:space-between;align-items:center;padding:5px 14px;border-bottom:1px solid rgba(160,180,200,.18);font-size:12px';
+            let h = `<div class="adp-hdr">Embalaje · ${numBultos} bulto${numBultos!==1?'s':''}</div>`;
+            grupos.forEach((g, i) => {
+              if (multiGroup) h += `<div style="${RS};font-weight:700;color:var(--tx)">${g.heading||('Bulto '+(i+1)+' de '+numBultos)}</div>`;
+              g.measurements.forEach(m => {
+                h += `<div style="${RS}"><span style="color:var(--mu)">${m.label}</span><span style="font-weight:600">${m.text}</span></div>`;
+              });
+            });
+            bultosEl.innerHTML = h;
+          } catch { bultosEl.innerHTML = '<div style="padding:12px 16px;color:var(--mu);font-size:12px">No disponible</div>'; }
+        } else {
+          bultosEl.innerHTML = '<div style="padding:12px 16px;color:var(--mu);font-size:12px">No disponible</div>';
+        }
+      }
+    }
+  } catch {
+    if (photoEl) photoEl.innerHTML = '<div class="adp-hero-placeholder"><span>📷</span><span>Sin foto disponible</span></div>';
+  }
 }
 
 function mapSideBack() {
